@@ -15,11 +15,6 @@
       "usesCleartextTraffic": true,
       "versionCode": 2
     },
-    "extra": {
-      "eas": {
-        "projectId": "325d6b44-7f74-446c-81ab-3c9f8a5dbe22"
-      }
-    },
-    "owner": "shingow"
+    "owner": "serwiss-team"
   }
 }
