@@ -32,4 +32,7 @@ async function bootstrap() {
   await app.listen(process.env.PORT ? Number(process.env.PORT) : 3001);
 }
 
-void bootstrap();
+void bootstrap().catch((error: unknown) => {
+  console.error('API bootstrap failed', error);
+  process.exit(1);
+});
