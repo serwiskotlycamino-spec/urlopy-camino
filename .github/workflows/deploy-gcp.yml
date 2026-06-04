@@ -31,6 +31,8 @@ jobs:
           API_SERVICE="${{ vars.GCP_CLOUD_RUN_API_SERVICE }}"
           WEB_SERVICE="${{ vars.GCP_CLOUD_RUN_WEB_SERVICE }}"
           SQL_INSTANCE="${{ vars.GCP_CLOUD_SQL_INSTANCE }}"
+          API_CORS_ORIGINS="${{ vars.GCP_API_CORS_ORIGINS }}"
+          WEB_NEXT_PUBLIC_API_URL="${{ vars.GCP_WEB_NEXT_PUBLIC_API_URL }}"
 
           PROJECT_ID="$(sanitize "$PROJECT_ID")"
           REGION="$(sanitize "$REGION")"
@@ -38,6 +40,8 @@ jobs:
           API_SERVICE="$(sanitize "$API_SERVICE")"
           WEB_SERVICE="$(sanitize "$WEB_SERVICE")"
           SQL_INSTANCE="$(sanitize "$SQL_INSTANCE")"
+          API_CORS_ORIGINS="$(sanitize "$API_CORS_ORIGINS")"
+          WEB_NEXT_PUBLIC_API_URL="$(sanitize "$WEB_NEXT_PUBLIC_API_URL")"
 
           PROJECT_ID="${PROJECT_ID:-urlopy-camino}"
           REGION="${REGION:-europe-central2}"
@@ -53,6 +57,8 @@ jobs:
             echo "API_SERVICE=$API_SERVICE"
             echo "WEB_SERVICE=$WEB_SERVICE"
             echo "SQL_INSTANCE=$SQL_INSTANCE"
+            echo "API_CORS_ORIGINS=$API_CORS_ORIGINS"
+            echo "WEB_NEXT_PUBLIC_API_URL=$WEB_NEXT_PUBLIC_API_URL"
           } >> "$GITHUB_ENV"
 
       - name: Validate required variables
@@ -84,6 +90,36 @@ jobs:
 
       - name: Configure Docker auth
         run: gcloud auth configure-docker ${REGION}-docker.pkg.dev --quiet
+
+      - name: Resolve runtime URLs and env values
+        run: |
+          set -euo pipefail
+
+          API_URL_CURRENT="$(gcloud run services describe "$API_SERVICE" --region "$REGION" --format='value(status.url)' 2>/dev/null || true)"
+          WEB_URL_CURRENT="$(gcloud run services describe "$WEB_SERVICE" --region "$REGION" --format='value(status.url)' 2>/dev/null || true)"
+
+          CORS_ORIGINS="$API_CORS_ORIGINS"
+          if [ -z "$CORS_ORIGINS" ]; then
+            if [ -n "$WEB_URL_CURRENT" ]; then
+              CORS_ORIGINS="$WEB_URL_CURRENT,http://localhost:3000,http://localhost:8081"
+            else
+              CORS_ORIGINS="http://localhost:3000,http://localhost:8081"
+            fi
+          fi
+
+          NEXT_PUBLIC_API_URL="$WEB_NEXT_PUBLIC_API_URL"
+          if [ -z "$NEXT_PUBLIC_API_URL" ]; then
+            if [ -n "$API_URL_CURRENT" ]; then
+              NEXT_PUBLIC_API_URL="$API_URL_CURRENT"
+            else
+              NEXT_PUBLIC_API_URL="http://localhost:3001"
+            fi
+          fi
+
+          {
+            echo "CORS_ORIGINS=$CORS_ORIGINS"
+            echo "NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL"
+          } >> "$GITHUB_ENV"
 
       - name: Ensure Artifact Registry repository exists
         run: |
@@ -117,7 +153,7 @@ jobs:
             --allow-unauthenticated \
             --port 8080 \
             --add-cloudsql-instances "$SQL_INSTANCE" \
-            --set-env-vars "DATABASE_URL=$DATABASE_URL"
+            --set-env-vars "^@^DATABASE_URL=$DATABASE_URL@CORS_ORIGINS=$CORS_ORIGINS"
 
       - name: Deploy Web service
         run: |
@@ -126,7 +162,8 @@ jobs:
             --region "$REGION" \
             --platform managed \
             --allow-unauthenticated \
-            --port 8080
+            --port 8080 \
+            --set-env-vars "NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL"
 
       - name: Print service URLs
         run: |

@@ -67,6 +67,9 @@ Variables:
 - `GCP_ARTIFACT_REPOSITORY` = `urlopy`
 - `GCP_CLOUD_RUN_API_SERVICE` = `urlopy-api`
 - `GCP_CLOUD_RUN_WEB_SERVICE` = `urlopy-web`
+- `GCP_CLOUD_SQL_INSTANCE` = `urlopy-camino:europe-central2:urlopy-pg` (opcjonalne, ma domyslna wartosc)
+- `GCP_API_CORS_ORIGINS` = finalna lista CORS (opcjonalne)
+- `GCP_WEB_NEXT_PUBLIC_API_URL` = finalny publiczny URL API dla web (opcjonalne)
 
 ## 5. Pierwszy automatyczny deploy
 
@@ -80,20 +83,19 @@ URL-e uslug beda w logu joba (krok "Print service URLs").
 
 ## 6. Co ustawic recznie po pierwszym deployu
 
-W Cloud Run `urlopy-api` dodaj zmienne srodowiskowe biznesowe:
+Workflow ustawia automatycznie podczas deployu:
 
-- `DATABASE_URL`
+- API: `DATABASE_URL`, `CORS_ORIGINS`
+- Web: `NEXT_PUBLIC_API_URL`
+
+Pozostaje ustawic recznie biznesowe sekrety dla API:
+
 - `JWT_SECRET`
-- `CORS_ORIGINS`
 - `COMMUNICATION_MODE`
 - `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`
 - `MAILBOX_ADDRESS`
 - `MS_TENANT_ID`, `MS_CLIENT_ID`, `MS_CLIENT_SECRET`
 - `ONEDRIVE_DRIVE_ID`, `ONEDRIVE_BASE_PATH`
-
-W Cloud Run `urlopy-web` ustaw:
-
-- `NEXT_PUBLIC_API_URL=https://URL_API_Z_CLOUD_RUN`
 
 ## 7. Mobilka po automatyzacji
 

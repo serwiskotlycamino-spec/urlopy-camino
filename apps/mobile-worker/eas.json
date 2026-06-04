@@ -9,7 +9,7 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://api.twojadomena.pl"
+        "EXPO_PUBLIC_API_URL": "https://urlopy-api-svvhqvitka-lm.a.run.app"
       }
     },
     "production": {
