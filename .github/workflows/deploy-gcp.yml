@@ -7,11 +7,11 @@ on:
   workflow_dispatch:
 
 env:
-  PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
-  REGION: ${{ vars.GCP_REGION }}
-  REPOSITORY: ${{ vars.GCP_ARTIFACT_REPOSITORY }}
-  API_SERVICE: ${{ vars.GCP_CLOUD_RUN_API_SERVICE }}
-  WEB_SERVICE: ${{ vars.GCP_CLOUD_RUN_WEB_SERVICE }}
+  PROJECT_ID: ${{ vars.GCP_PROJECT_ID || 'urlopy-camino' }}
+  REGION: ${{ vars.GCP_REGION || 'europe-central2' }}
+  REPOSITORY: ${{ vars.GCP_ARTIFACT_REPOSITORY || 'urlopy' }}
+  API_SERVICE: ${{ vars.GCP_CLOUD_RUN_API_SERVICE || 'urlopy-api' }}
+  WEB_SERVICE: ${{ vars.GCP_CLOUD_RUN_WEB_SERVICE || 'urlopy-web' }}
 
 jobs:
   deploy:
