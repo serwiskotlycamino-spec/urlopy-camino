@@ -6,13 +6,6 @@ on:
       - main
   workflow_dispatch:
 
-env:
-  PROJECT_ID: ${{ vars.GCP_PROJECT_ID || 'urlopy-camino' }}
-  REGION: ${{ vars.GCP_REGION || 'europe-central2' }}
-  REPOSITORY: ${{ vars.GCP_ARTIFACT_REPOSITORY || 'urlopy' }}
-  API_SERVICE: ${{ vars.GCP_CLOUD_RUN_API_SERVICE || 'urlopy-api' }}
-  WEB_SERVICE: ${{ vars.GCP_CLOUD_RUN_WEB_SERVICE || 'urlopy-web' }}
-
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -24,13 +17,38 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Resolve deployment configuration
+        run: |
+          set -euo pipefail
+
+          PROJECT_ID="${{ vars.GCP_PROJECT_ID }}"
+          REGION="${{ vars.GCP_REGION }}"
+          REPOSITORY="${{ vars.GCP_ARTIFACT_REPOSITORY }}"
+          API_SERVICE="${{ vars.GCP_CLOUD_RUN_API_SERVICE }}"
+          WEB_SERVICE="${{ vars.GCP_CLOUD_RUN_WEB_SERVICE }}"
+
+          PROJECT_ID="${PROJECT_ID:-urlopy-camino}"
+          REGION="${REGION:-europe-central2}"
+          REPOSITORY="${REPOSITORY:-urlopy}"
+          API_SERVICE="${API_SERVICE:-urlopy-api}"
+          WEB_SERVICE="${WEB_SERVICE:-urlopy-web}"
+
+          {
+            echo "PROJECT_ID=$PROJECT_ID"
+            echo "REGION=$REGION"
+            echo "REPOSITORY=$REPOSITORY"
+            echo "API_SERVICE=$API_SERVICE"
+            echo "WEB_SERVICE=$WEB_SERVICE"
+          } >> "$GITHUB_ENV"
+
       - name: Validate required variables
         run: |
-          test -n "$PROJECT_ID"
-          test -n "$REGION"
-          test -n "$REPOSITORY"
-          test -n "$API_SERVICE"
-          test -n "$WEB_SERVICE"
+          set -euo pipefail
+          : "${PROJECT_ID:?Missing PROJECT_ID}"
+          : "${REGION:?Missing REGION}"
+          : "${REPOSITORY:?Missing REPOSITORY}"
+          : "${API_SERVICE:?Missing API_SERVICE}"
+          : "${WEB_SERVICE:?Missing WEB_SERVICE}"
 
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
