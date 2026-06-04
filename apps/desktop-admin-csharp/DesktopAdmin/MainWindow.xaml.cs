@@ -21,8 +21,8 @@ public partial class MainWindow : Window
         _apiClient = new ApiClient(DefaultApiUrl);
 
         ApiUrlTextBox.Text = DefaultApiUrl;
-        EmailTextBox.Text = "serwis@kotlycamino.pl";
-        PasswordBox.Password = "Camino2023?";
+        EmailTextBox.Text = "admin@firma.local";
+        PasswordBox.Password = "admin123";
 
         NewUserRoleCombo.ItemsSource = new[] { "ADMIN", "MANAGER", "EMPLOYEE" };
         NewUserRoleCombo.SelectedIndex = 2;
