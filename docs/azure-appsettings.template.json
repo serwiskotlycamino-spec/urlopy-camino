@@ -1,0 +1,87 @@
+[
+  {
+    "name": "NODE_ENV",
+    "value": "production",
+    "slotSetting": false
+  },
+  {
+    "name": "WEBSITE_NODE_DEFAULT_VERSION",
+    "value": "~22",
+    "slotSetting": false
+  },
+  {
+    "name": "DATABASE_URL",
+    "value": "postgresql://urlopy_user:CHANGE_ME@your-postgres-host:5432/urlopy?sslmode=require",
+    "slotSetting": false
+  },
+  {
+    "name": "JWT_SECRET",
+    "value": "CHANGE_ME_LONG_RANDOM_SECRET",
+    "slotSetting": true
+  },
+  {
+    "name": "CORS_ORIGINS",
+    "value": "https://panel.twojadomena.pl,https://www.panel.twojadomena.pl",
+    "slotSetting": false
+  },
+  {
+    "name": "COMMUNICATION_MODE",
+    "value": "EMAIL_ONLY",
+    "slotSetting": false
+  },
+  {
+    "name": "SMTP_HOST",
+    "value": "smtp.office365.com",
+    "slotSetting": false
+  },
+  {
+    "name": "SMTP_PORT",
+    "value": "587",
+    "slotSetting": false
+  },
+  {
+    "name": "SMTP_USER",
+    "value": "serwis@kotlycamino.pl",
+    "slotSetting": false
+  },
+  {
+    "name": "SMTP_PASS",
+    "value": "CHANGE_ME_SMTP_PASSWORD",
+    "slotSetting": true
+  },
+  {
+    "name": "SMTP_FROM",
+    "value": "serwis@kotlycamino.pl",
+    "slotSetting": false
+  },
+  {
+    "name": "FIREBASE_SERVICE_ACCOUNT_JSON",
+    "value": "{\"type\":\"service_account\",\"project_id\":\"your-fcm-project-id\"}",
+    "slotSetting": true
+  },
+  {
+    "name": "MS_TENANT_ID",
+    "value": "CHANGE_ME_TENANT_ID",
+    "slotSetting": false
+  },
+  {
+    "name": "MS_CLIENT_ID",
+    "value": "CHANGE_ME_CLIENT_ID",
+    "slotSetting": false
+  },
+  {
+    "name": "MS_CLIENT_SECRET",
+    "value": "CHANGE_ME_CLIENT_SECRET",
+    "slotSetting": true
+  },
+  {
+    "name": "ONEDRIVE_DRIVE_ID",
+    "value": "CHANGE_ME_DRIVE_ID",
+    "slotSetting": false
+  },
+  {
+    "name": "ONEDRIVE_BASE_PATH",
+    "value": "urlopy",
+    "slotSetting": false
+  }
+]

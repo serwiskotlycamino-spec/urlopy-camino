@@ -1,0 +1,15 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: urlopy-db
+    environment:
+      POSTGRES_DB: urlopy
+      POSTGRES_USER: urlopy_user
+      POSTGRES_PASSWORD: urlopy_pass
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:

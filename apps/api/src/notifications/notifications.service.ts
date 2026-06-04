@@ -1,0 +1,188 @@
+import { Injectable } from '@nestjs/common';
+import { DatabaseService } from '../database/database.service';
+import { RealtimeService } from '../realtime/realtime.service';
+import nodemailer, { type Transporter } from 'nodemailer';
+import admin from 'firebase-admin';
+
+type NotificationRow = {
+  id: number;
+  user_id: number;
+  channel: 'IN_APP' | 'EMAIL' | 'PUSH';
+  event: string;
+  message: string;
+  payload: Record<string, unknown> | null;
+  status: 'SENT' | 'FAILED';
+  created_at: string;
+};
+
+type UserContact = {
+  email: string;
+  device_token: string | null;
+};
+
+@Injectable()
+export class NotificationsService {
+  private readonly mailer: Transporter | null;
+  private readonly communicationMode = (process.env.COMMUNICATION_MODE ?? 'MULTI').toUpperCase();
+
+  constructor(
+    private readonly db: DatabaseService,
+    private readonly realtime: RealtimeService,
+  ) {
+    this.mailer = this.createMailer();
+    this.tryInitFirebase();
+  }
+
+  async createInApp(
+    userId: number,
+    event: string,
+    message: string,
+    payload: Record<string, unknown>,
+  ) {
+    // In EMAIL_ONLY mode mailbox is the only information carrier.
+    if (this.communicationMode === 'EMAIL_ONLY') {
+      return;
+    }
+
+    await this.db.run(
+      `INSERT INTO notifications (user_id, channel, event, message, payload, status)
+       VALUES ($1, 'IN_APP', $2, $3, $4, 'SENT')`,
+      [userId, event, message, payload],
+    );
+
+    this.realtime.publish({
+      userId,
+      type: event,
+      payload: { message, payload },
+    });
+
+    await this.createPush(userId, event, message, payload);
+  }
+
+  async createEmailFallback(
+    userId: number,
+    event: string,
+    message: string,
+    payload: Record<string, unknown>,
+  ) {
+    const contact = await this.db.get<UserContact>('SELECT email, device_token FROM users WHERE id = $1', [
+      userId,
+    ]);
+
+    const canSend = Boolean(this.mailer && contact?.email);
+    let status: 'SENT' | 'FAILED' = canSend ? 'SENT' : 'FAILED';
+
+    if (canSend && this.mailer && contact) {
+      try {
+        await this.mailer.sendMail({
+          from: process.env.SMTP_FROM ?? 'serwis@kotlycamino.pl',
+          to: contact.email,
+          subject: `[URLopy] ${event}`,
+          text: `${message}\n\nPayload: ${JSON.stringify(payload)}`,
+        });
+      } catch {
+        status = 'FAILED';
+      }
+    }
+
+    await this.db.run(
+      `INSERT INTO notifications (user_id, channel, event, message, payload, status)
+       VALUES ($1, 'EMAIL', $2, $3, $4, $5)`,
+      [userId, event, message, payload, status],
+    );
+  }
+
+  private async createPush(
+    userId: number,
+    event: string,
+    message: string,
+    payload: Record<string, unknown>,
+  ): Promise<void> {
+    const contact = await this.db.get<UserContact>('SELECT email, device_token FROM users WHERE id = $1', [
+      userId,
+    ]);
+
+    if (!contact?.device_token) {
+      return;
+    }
+
+    let status: 'SENT' | 'FAILED' = 'SENT';
+    try {
+      await admin.messaging().send({
+        token: contact.device_token,
+        notification: {
+          title: 'URLopy',
+          body: message,
+        },
+        data: {
+          event,
+        },
+      });
+    } catch {
+      status = 'FAILED';
+    }
+
+    await this.db.run(
+      `INSERT INTO notifications (user_id, channel, event, message, payload, status)
+       VALUES ($1, 'PUSH', $2, $3, $4, $5)`,
+      [userId, event, message, payload, status],
+    );
+  }
+
+  async getForUser(userId: number, afterId?: number) {
+    const rows = await this.db.all<NotificationRow>(
+      `SELECT * FROM notifications
+        WHERE user_id = $1 AND ($2::int IS NULL OR id > $3)
+       ORDER BY id DESC
+       LIMIT 50`,
+      [userId, afterId ?? null, afterId ?? null],
+    );
+
+    return rows.map((row) => ({
+      id: row.id,
+      userId: row.user_id,
+      channel: row.channel,
+      event: row.event,
+      message: row.message,
+      payload: row.payload,
+      status: row.status,
+      createdAt: row.created_at,
+    }));
+  }
+
+  private createMailer(): Transporter | null {
+    if (!process.env.SMTP_HOST || !process.env.SMTP_PORT || !process.env.SMTP_USER || !process.env.SMTP_PASS) {
+      return null;
+    }
+
+    return nodemailer.createTransport({
+      host: process.env.SMTP_HOST,
+      port: Number(process.env.SMTP_PORT),
+      secure: Number(process.env.SMTP_PORT) === 465,
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS,
+      },
+    });
+  }
+
+  private tryInitFirebase(): void {
+    if (admin.apps.length > 0) {
+      return;
+    }
+
+    const serviceAccountRaw = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+    if (!serviceAccountRaw) {
+      return;
+    }
+
+    try {
+      const serviceAccount = JSON.parse(serviceAccountRaw) as admin.ServiceAccount;
+      admin.initializeApp({
+        credential: admin.credential.cert(serviceAccount),
+      });
+    } catch {
+      // ignore malformed firebase config in local environment
+    }
+  }
+}
