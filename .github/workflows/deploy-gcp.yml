@@ -60,6 +60,13 @@ jobs:
           : "${API_SERVICE:?Missing API_SERVICE}"
           : "${WEB_SERVICE:?Missing WEB_SERVICE}"
 
+      - name: Validate required secrets
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          : "${DATABASE_URL:?Missing DATABASE_URL secret in GitHub repository settings}"
+
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:
@@ -97,12 +104,14 @@ jobs:
 
       - name: Deploy API service
         run: |
+          DATABASE_URL='${{ secrets.DATABASE_URL }}'
           gcloud run deploy "$API_SERVICE" \
             --image "$API_IMAGE" \
             --region "$REGION" \
             --platform managed \
             --allow-unauthenticated \
-            --port 8080
+            --port 8080 \
+            --set-env-vars "DATABASE_URL=$DATABASE_URL"
 
       - name: Deploy Web service
         run: |
