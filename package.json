@@ -6,10 +6,20 @@
     "apps/*",
     "packages/*"
   ],
+  "overrides": {
+    "postcss": "^8.5.0"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1",
+    "postcss": "^8.5.0"
+  },
   "scripts": {
     "dev:web": "npm --workspace apps/web-admin run dev",
     "dev:api": "npm --workspace apps/api run start:dev",
+    "tunnel:api": "npx --yes localtunnel --port 3001 --local-host 127.0.0.1",
+    "dev:api:tunnel": "concurrently -k -n API,TUNEL \"npm run dev:api\" \"npm run tunnel:api\"",
     "dev:mobile": "npm --workspace apps/mobile-worker run start",
+    "build:apk": "powershell -ExecutionPolicy Bypass -File scripts/build-mobile-apk.ps1",
     "build": "npm run build --workspaces",
     "lint": "npm run lint --workspaces"
   }

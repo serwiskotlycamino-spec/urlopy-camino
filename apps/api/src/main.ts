@@ -4,15 +4,24 @@ import { ValidationPipe } from '@nestjs/common';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-  const corsOrigins = (process.env.CORS_ORIGINS ?? 'http://localhost:3000,http://localhost:8081')
-    .split(',')
-    .map((origin) => origin.trim())
-    .filter(Boolean);
+  const corsRaw = process.env.CORS_ORIGINS?.trim();
 
-  app.enableCors({
-    origin: corsOrigins,
-    credentials: true,
-  });
+  if (!corsRaw || corsRaw === '*') {
+    app.enableCors({
+      origin: true,
+      credentials: false,
+    });
+  } else {
+    const corsOrigins = corsRaw
+      .split(',')
+      .map((origin) => origin.trim())
+      .filter(Boolean);
+
+    app.enableCors({
+      origin: corsOrigins,
+      credentials: false,
+    });
+  }
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,

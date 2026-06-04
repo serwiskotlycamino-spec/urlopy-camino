@@ -1,9 +1,13 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
 import { JwtService } from './jwt.service';
 import type { AuthUser } from './types';
 import { compare, hash } from 'bcryptjs';
 import { createHash, randomBytes } from 'node:crypto';
+import type { CreateUserDto } from './dto/create-user.dto';
+import type { UpdateUserRoleDto } from './dto/update-user-role.dto';
+import type { UpdateMailSettingsDto } from './dto/update-mail-settings.dto';
+import type { UpdateUserSettingsDto } from './dto/update-user-settings.dto';
 
 type DbUser = {
   id: number;
@@ -19,6 +23,33 @@ type RefreshRow = {
   user_id: number;
   expires_at: string;
   revoked_at: string | null;
+};
+
+type UserSummary = {
+  id: number;
+  name: string;
+  email: string;
+  role: 'ADMIN' | 'MANAGER' | 'EMPLOYEE';
+  manager_id: number | null;
+};
+
+type AppSettingRow = {
+  key: string;
+  value: string;
+};
+
+type MailSettings = {
+  smtpHost: string;
+  smtpPort: number;
+  smtpUser: string;
+  smtpFrom: string;
+  imapHost: string;
+  imapPort: number;
+  imapUser: string;
+  imapSecure: boolean;
+  communicationMode: 'MULTI' | 'EMAIL_ONLY';
+  smtpPassConfigured: boolean;
+  imapPassConfigured: boolean;
 };
 
 @Injectable()
@@ -101,9 +132,201 @@ export class AuthService {
   }
 
   async getUsers() {
-    return this.db.all<Omit<DbUser, 'password'>>(
-      'SELECT id, name, email, role, manager_id FROM users ORDER BY id ASC',
+    const rows = await this.db.all<UserSummary>('SELECT id, name, email, role, manager_id FROM users ORDER BY id ASC');
+    return rows.map((row) => this.mapUserSummary(row));
+  }
+
+  async createUser(actor: AuthUser, input: CreateUserDto) {
+    this.ensureCanAssignRole(actor.role, input.role);
+
+    const existing = await this.db.get<{ id: number }>('SELECT id FROM users WHERE email = $1', [input.email]);
+    if (existing) {
+      throw new BadRequestException('Uzytkownik z takim adresem email juz istnieje.');
+    }
+
+    const managerId = await this.resolveManagerId(actor, input.role, input.managerId);
+    const passwordHash = await hash(input.password, 10);
+
+    const created = await this.db.get<UserSummary>(
+      `INSERT INTO users (name, email, password, role, manager_id)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id, name, email, role, manager_id`,
+      [input.name, input.email.toLowerCase(), passwordHash, input.role, managerId],
     );
+
+    if (!created) {
+      throw new BadRequestException('Nie udalo sie utworzyc uzytkownika.');
+    }
+
+    return this.mapUserSummary(created);
+  }
+
+  async updateUserRole(actor: AuthUser, userId: number, input: UpdateUserRoleDto) {
+    if (actor.role !== 'ADMIN') {
+      throw new ForbiddenException('Tylko administrator moze zmieniac uprawnienia.');
+    }
+
+    const target = await this.db.get<UserSummary>('SELECT id, name, email, role, manager_id FROM users WHERE id = $1', [
+      userId,
+    ]);
+
+    if (!target) {
+      throw new BadRequestException('Nie znaleziono wskazanego uzytkownika.');
+    }
+
+    const managerId = await this.resolveManagerId(actor, input.role, input.managerId);
+
+    const updated = await this.db.get<UserSummary>(
+      `UPDATE users
+       SET role = $1, manager_id = $2
+       WHERE id = $3
+       RETURNING id, name, email, role, manager_id`,
+      [input.role, managerId, userId],
+    );
+
+    if (!updated) {
+      throw new BadRequestException('Nie udalo sie zaktualizowac uprawnien.');
+    }
+
+    return this.mapUserSummary(updated);
+  }
+
+  async updateUserSettings(actor: AuthUser, userId: number, input: UpdateUserSettingsDto) {
+    const target = await this.db.get<UserSummary>('SELECT id, name, email, role, manager_id FROM users WHERE id = $1', [
+      userId,
+    ]);
+
+    if (!target) {
+      throw new BadRequestException('Nie znaleziono wskazanego uzytkownika.');
+    }
+
+    if (actor.role === 'MANAGER') {
+      const canEdit = target.role === 'EMPLOYEE' && target.manager_id === actor.id;
+      if (!canEdit) {
+        throw new ForbiddenException('Kierownik moze edytowac tylko swoich pracownikow.');
+      }
+    }
+
+    const nextName = input.name?.trim() || target.name;
+    const nextEmail = input.email?.trim().toLowerCase() || target.email;
+
+    if (nextEmail !== target.email) {
+      const existing = await this.db.get<{ id: number }>('SELECT id FROM users WHERE email = $1', [nextEmail]);
+      if (existing && existing.id !== target.id) {
+        throw new BadRequestException('Uzytkownik z takim adresem email juz istnieje.');
+      }
+    }
+
+    let nextManagerId = target.manager_id;
+    if (target.role === 'EMPLOYEE' && input.managerId !== undefined) {
+      if (actor.role === 'MANAGER' && input.managerId !== actor.id) {
+        throw new ForbiddenException('Kierownik moze przypisac pracownika tylko do siebie.');
+      }
+
+      const manager = await this.db.get<UserSummary>(
+        'SELECT id, name, email, role, manager_id FROM users WHERE id = $1',
+        [input.managerId],
+      );
+
+      if (!manager || (manager.role !== 'MANAGER' && manager.role !== 'ADMIN')) {
+        throw new BadRequestException('Wskazany kierownik nie istnieje lub ma nieprawidlowa role.');
+      }
+
+      nextManagerId = input.managerId;
+    }
+
+    if (target.role !== 'EMPLOYEE') {
+      nextManagerId = null;
+    }
+
+    await this.db.run(
+      `UPDATE users
+       SET name = $1, email = $2, manager_id = $3
+       WHERE id = $4`,
+      [nextName, nextEmail, nextManagerId, userId],
+    );
+
+    if (input.password && input.password.trim().length > 0) {
+      const passwordHash = await hash(input.password, 10);
+      await this.db.run('UPDATE users SET password = $1 WHERE id = $2', [passwordHash, userId]);
+    }
+
+    const updated = await this.db.get<UserSummary>('SELECT id, name, email, role, manager_id FROM users WHERE id = $1', [
+      userId,
+    ]);
+
+    if (!updated) {
+      throw new BadRequestException('Nie udalo sie zaktualizowac ustawien uzytkownika.');
+    }
+
+    return this.mapUserSummary(updated);
+  }
+
+  async getMailSettings(): Promise<MailSettings> {
+    const settings = await this.getSettingsMap();
+    const smtpPass = settings['mail.smtpPass'] ?? process.env.SMTP_PASS ?? '';
+    const imapPass = settings['mail.imapPass'] ?? process.env.IMAP_PASS ?? '';
+
+    return {
+      smtpHost: settings['mail.smtpHost'] ?? process.env.SMTP_HOST ?? '',
+      smtpPort: Number(settings['mail.smtpPort'] ?? process.env.SMTP_PORT ?? '0'),
+      smtpUser: settings['mail.smtpUser'] ?? process.env.SMTP_USER ?? '',
+      smtpFrom: settings['mail.smtpFrom'] ?? process.env.SMTP_FROM ?? '',
+      imapHost: settings['mail.imapHost'] ?? process.env.IMAP_HOST ?? '',
+      imapPort: Number(settings['mail.imapPort'] ?? process.env.IMAP_PORT ?? '0'),
+      imapUser: settings['mail.imapUser'] ?? process.env.IMAP_USER ?? '',
+      imapSecure: this.resolveImapSecure(settings['mail.imapSecure'] ?? process.env.IMAP_SECURE),
+      communicationMode: this.resolveCommunicationMode(
+        settings.communication_mode ?? process.env.COMMUNICATION_MODE,
+      ),
+      smtpPassConfigured: Boolean(smtpPass),
+      imapPassConfigured: Boolean(imapPass),
+    };
+  }
+
+  async updateMailSettings(actor: AuthUser, input: UpdateMailSettingsDto) {
+    if (actor.role !== 'ADMIN' && actor.role !== 'MANAGER') {
+      throw new ForbiddenException('Brak uprawnien do konfiguracji poczty.');
+    }
+
+    const updates: Array<{ key: string; value: string }> = [];
+    if (input.smtpHost !== undefined) {
+      updates.push({ key: 'mail.smtpHost', value: input.smtpHost.trim() });
+    }
+    if (input.smtpPort !== undefined) {
+      updates.push({ key: 'mail.smtpPort', value: String(input.smtpPort) });
+    }
+    if (input.smtpUser !== undefined) {
+      updates.push({ key: 'mail.smtpUser', value: input.smtpUser.trim() });
+    }
+    if (input.smtpFrom !== undefined) {
+      updates.push({ key: 'mail.smtpFrom', value: input.smtpFrom.trim() });
+    }
+    if (input.imapHost !== undefined) {
+      updates.push({ key: 'mail.imapHost', value: input.imapHost.trim() });
+    }
+    if (input.imapPort !== undefined) {
+      updates.push({ key: 'mail.imapPort', value: String(input.imapPort) });
+    }
+    if (input.imapUser !== undefined) {
+      updates.push({ key: 'mail.imapUser', value: input.imapUser.trim() });
+    }
+    if (input.imapPass !== undefined && input.imapPass.trim().length > 0) {
+      updates.push({ key: 'mail.imapPass', value: input.imapPass });
+    }
+    if (input.imapSecure !== undefined) {
+      updates.push({ key: 'mail.imapSecure', value: input.imapSecure ? '1' : '0' });
+    }
+    if (input.smtpPass !== undefined && input.smtpPass.trim().length > 0) {
+      updates.push({ key: 'mail.smtpPass', value: input.smtpPass });
+    }
+    if (input.communicationMode !== undefined) {
+      updates.push({ key: 'communication_mode', value: input.communicationMode });
+    }
+
+    await Promise.all(updates.map((item) => this.upsertSetting(item.key, item.value)));
+
+    return this.getMailSettings();
   }
 
   async updateDeviceToken(userId: number, token: string): Promise<void> {
@@ -160,5 +383,92 @@ export class AuthService {
 
   private hashRefreshToken(token: string): string {
     return createHash('sha256').update(token).digest('hex');
+  }
+
+  private ensureCanAssignRole(actorRole: AuthUser['role'], targetRole: UserSummary['role']): void {
+    if (actorRole === 'ADMIN') {
+      return;
+    }
+
+    if (actorRole === 'MANAGER' && targetRole === 'EMPLOYEE') {
+      return;
+    }
+
+    throw new ForbiddenException('Brak uprawnien do nadania tej roli.');
+  }
+
+  private async resolveManagerId(
+    actor: AuthUser,
+    role: UserSummary['role'],
+    managerId?: number,
+  ): Promise<number | null> {
+    if (role !== 'EMPLOYEE') {
+      return null;
+    }
+
+    const fallbackManagerId = actor.role === 'MANAGER' ? actor.id : undefined;
+    const finalManagerId = managerId ?? fallbackManagerId;
+    if (!finalManagerId) {
+      throw new BadRequestException('Pracownik musi miec przypisanego kierownika.');
+    }
+
+    const manager = await this.db.get<UserSummary>(
+      `SELECT id, name, email, role, manager_id
+       FROM users
+       WHERE id = $1`,
+      [finalManagerId],
+    );
+
+    if (!manager || (manager.role !== 'MANAGER' && manager.role !== 'ADMIN')) {
+      throw new BadRequestException('Przypisany kierownik nie istnieje lub ma zla role.');
+    }
+
+    return finalManagerId;
+  }
+
+  private mapUserSummary(row: UserSummary) {
+    return {
+      id: row.id,
+      name: row.name,
+      email: row.email,
+      role: row.role,
+      managerId: row.manager_id,
+    };
+  }
+
+  private async upsertSetting(key: string, value: string): Promise<void> {
+    await this.db.run(
+      `INSERT INTO app_settings (key, value, updated_at)
+       VALUES ($1, $2, NOW())
+       ON CONFLICT (key)
+       DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
+      [key, value],
+    );
+  }
+
+  private async getSettingsMap(): Promise<Record<string, string>> {
+    const rows = await this.db.all<AppSettingRow>(
+      `SELECT key, value
+       FROM app_settings
+       WHERE key LIKE 'mail.%' OR key = 'communication_mode'`,
+    );
+
+    return rows.reduce<Record<string, string>>((acc, row) => {
+      acc[row.key] = row.value;
+      return acc;
+    }, {});
+  }
+
+  private resolveCommunicationMode(raw: string | undefined): 'MULTI' | 'EMAIL_ONLY' {
+    return raw?.toUpperCase() === 'EMAIL_ONLY' ? 'EMAIL_ONLY' : 'MULTI';
+  }
+
+  private resolveImapSecure(raw: string | undefined): boolean {
+    if (!raw) {
+      return true;
+    }
+
+    const normalized = raw.trim().toLowerCase();
+    return normalized === '1' || normalized === 'true' || normalized === 'yes';
   }
 }

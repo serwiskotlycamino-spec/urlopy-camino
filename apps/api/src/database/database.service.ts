@@ -15,6 +15,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     await this.pool.query('SELECT 1');
     await this.initSchema();
     await this.seedUsers();
+    await this.seedSettings();
   }
 
   async onModuleDestroy(): Promise<void> {
@@ -83,6 +84,12 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
         created_at TIMESTAMP NOT NULL DEFAULT NOW()
       );
 
+      CREATE TABLE IF NOT EXISTS app_settings (
+        key VARCHAR(120) PRIMARY KEY,
+        value TEXT NOT NULL,
+        updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+      );
+
       CREATE TABLE IF NOT EXISTS leave_request_attachments (
         id SERIAL PRIMARY KEY,
         leave_request_id INTEGER NOT NULL,
@@ -129,5 +136,34 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
         'EMPLOYEE',
       ],
     );
+  }
+
+  private async seedSettings(): Promise<void> {
+    const defaults: Array<{ key: string; value: string | undefined }> = [
+      { key: 'communication_mode', value: process.env.COMMUNICATION_MODE ?? 'MULTI' },
+      { key: 'mail.smtpHost', value: process.env.SMTP_HOST },
+      { key: 'mail.smtpPort', value: process.env.SMTP_PORT },
+      { key: 'mail.smtpUser', value: process.env.SMTP_USER },
+      { key: 'mail.smtpPass', value: process.env.SMTP_PASS },
+      { key: 'mail.smtpFrom', value: process.env.SMTP_FROM },
+      { key: 'mail.imapHost', value: process.env.IMAP_HOST },
+      { key: 'mail.imapPort', value: process.env.IMAP_PORT },
+      { key: 'mail.imapUser', value: process.env.IMAP_USER },
+      { key: 'mail.imapPass', value: process.env.IMAP_PASS },
+      { key: 'mail.imapSecure', value: process.env.IMAP_SECURE },
+    ];
+
+    for (const item of defaults) {
+      if (!item.value) {
+        continue;
+      }
+
+      await this.run(
+        `INSERT INTO app_settings (key, value, updated_at)
+         VALUES ($1, $2, NOW())
+         ON CONFLICT (key) DO NOTHING`,
+        [item.key, item.value],
+      );
+    }
   }
 }

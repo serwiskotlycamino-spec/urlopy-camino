@@ -1,4 +1,4 @@
-# Program urlopowy
+# Urlopy Camino
 
 Projekt jest przygotowany jako monorepo z trzema aplikacjami:
 
@@ -180,6 +180,30 @@ Najwazniejsze punkty:
 2. Baze danych trzymaj w Azure PostgreSQL.
 3. Zalaczniki trzymaj w OneDrive przez Microsoft Graph (app registration w Entra ID).
 4. Ustaw `CORS_ORIGINS` i publiczne URL API dla web/mobile.
+
+Alternatywa na istniejacych kontach Google + Microsoft:
+
+- docs/google-cloud-onedrive-deploy.md
+
+Scenariusz od zera (bez projektu Google i bez domeny):
+
+- docs/zero-to-live-google-microsoft.md
+
+Automatyczny deploy z GitHub do Google Cloud Run:
+
+- docs/github-cicd-gcp.md
+
+## Always-on (internet mobilny i Wi-Fi)
+
+Jesli aplikacja ma dzialac zawsze po internecie, backend i baza nie moga dzialac na komputerze lokalnym.
+
+Uzyj gotowej instrukcji:
+
+- docs/always-on-deploy.md
+
+Dla szybkiego wdrozenia 24/7 jest przygotowany blueprint:
+
+- render.yaml
 
 ## Szybki start: Azure App Settings
 

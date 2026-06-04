@@ -20,16 +20,26 @@ type UserContact = {
   device_token: string | null;
 };
 
+type AppSettingRow = {
+  key: string;
+  value: string;
+};
+
+type ResolvedMailSettings = {
+  smtpHost: string;
+  smtpPort: number;
+  smtpUser: string;
+  smtpPass: string;
+  smtpFrom: string;
+  communicationMode: 'MULTI' | 'EMAIL_ONLY';
+};
+
 @Injectable()
 export class NotificationsService {
-  private readonly mailer: Transporter | null;
-  private readonly communicationMode = (process.env.COMMUNICATION_MODE ?? 'MULTI').toUpperCase();
-
   constructor(
     private readonly db: DatabaseService,
     private readonly realtime: RealtimeService,
   ) {
-    this.mailer = this.createMailer();
     this.tryInitFirebase();
   }
 
@@ -39,8 +49,10 @@ export class NotificationsService {
     message: string,
     payload: Record<string, unknown>,
   ) {
+    const settings = await this.resolveMailSettings();
+
     // In EMAIL_ONLY mode mailbox is the only information carrier.
-    if (this.communicationMode === 'EMAIL_ONLY') {
+    if (settings.communicationMode === 'EMAIL_ONLY') {
       return;
     }
 
@@ -65,17 +77,20 @@ export class NotificationsService {
     message: string,
     payload: Record<string, unknown>,
   ) {
+    const settings = await this.resolveMailSettings();
+    const mailer = this.createMailer(settings);
+
     const contact = await this.db.get<UserContact>('SELECT email, device_token FROM users WHERE id = $1', [
       userId,
     ]);
 
-    const canSend = Boolean(this.mailer && contact?.email);
+    const canSend = Boolean(mailer && contact?.email);
     let status: 'SENT' | 'FAILED' = canSend ? 'SENT' : 'FAILED';
 
-    if (canSend && this.mailer && contact) {
+    if (canSend && mailer && contact) {
       try {
-        await this.mailer.sendMail({
-          from: process.env.SMTP_FROM ?? 'serwis@kotlycamino.pl',
+        await mailer.sendMail({
+          from: settings.smtpFrom,
           to: contact.email,
           subject: `[URLopy] ${event}`,
           text: `${message}\n\nPayload: ${JSON.stringify(payload)}`,
@@ -150,20 +165,45 @@ export class NotificationsService {
     }));
   }
 
-  private createMailer(): Transporter | null {
-    if (!process.env.SMTP_HOST || !process.env.SMTP_PORT || !process.env.SMTP_USER || !process.env.SMTP_PASS) {
+  private createMailer(settings: ResolvedMailSettings): Transporter | null {
+    if (!settings.smtpHost || !settings.smtpPort || !settings.smtpUser || !settings.smtpPass) {
       return null;
     }
 
     return nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: Number(process.env.SMTP_PORT),
-      secure: Number(process.env.SMTP_PORT) === 465,
+      host: settings.smtpHost,
+      port: settings.smtpPort,
+      secure: settings.smtpPort === 465,
       auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
+        user: settings.smtpUser,
+        pass: settings.smtpPass,
       },
     });
+  }
+
+  private async resolveMailSettings(): Promise<ResolvedMailSettings> {
+    const rows = await this.db.all<AppSettingRow>(
+      `SELECT key, value
+       FROM app_settings
+       WHERE key LIKE 'mail.%' OR key = 'communication_mode'`,
+    );
+
+    const map = rows.reduce<Record<string, string>>((acc, row) => {
+      acc[row.key] = row.value;
+      return acc;
+    }, {});
+
+    return {
+      smtpHost: map['mail.smtpHost'] ?? process.env.SMTP_HOST ?? '',
+      smtpPort: Number(map['mail.smtpPort'] ?? process.env.SMTP_PORT ?? '0'),
+      smtpUser: map['mail.smtpUser'] ?? process.env.SMTP_USER ?? '',
+      smtpPass: map['mail.smtpPass'] ?? process.env.SMTP_PASS ?? '',
+      smtpFrom: map['mail.smtpFrom'] ?? process.env.SMTP_FROM ?? 'serwis@kotlycamino.pl',
+      communicationMode:
+        (map.communication_mode ?? process.env.COMMUNICATION_MODE ?? 'MULTI').toUpperCase() === 'EMAIL_ONLY'
+          ? 'EMAIL_ONLY'
+          : 'MULTI',
+    };
   }
 
   private tryInitFirebase(): void {

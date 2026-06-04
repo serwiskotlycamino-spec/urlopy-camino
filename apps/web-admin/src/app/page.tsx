@@ -2,11 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+type AppRole = "ADMIN" | "MANAGER" | "EMPLOYEE";
+
 type User = {
   id: number;
   name: string;
   email: string;
-  role: "ADMIN" | "MANAGER" | "EMPLOYEE";
+  role: AppRole;
   managerId: number | null;
 };
 
@@ -29,6 +31,20 @@ type LeaveRequest = {
   created_at: string;
 };
 
+type MailSettings = {
+  smtpHost: string;
+  smtpPort: number;
+  smtpUser: string;
+  smtpFrom: string;
+  imapHost: string;
+  imapPort: number;
+  imapUser: string;
+  imapSecure: boolean;
+  communicationMode: "MULTI" | "EMAIL_ONLY";
+  smtpPassConfigured: boolean;
+  imapPassConfigured: boolean;
+};
+
 type Attachment = {
   id: number;
   leave_request_id: number;
@@ -41,6 +57,16 @@ type Attachment = {
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
+function roleLabel(role: AppRole): string {
+  if (role === "ADMIN") {
+    return "Administrator";
+  }
+  if (role === "MANAGER") {
+    return "Kierownik";
+  }
+  return "Pracownik";
+}
+
 export default function Home() {
   const [email, setEmail] = useState("szef@firma.local");
   const [password, setPassword] = useState("szef123");
@@ -49,50 +75,113 @@ export default function Home() {
   const [token, setToken] = useState<string | null>(null);
   const [refreshToken, setRefreshToken] = useState<string | null>(null);
   const [pending, setPending] = useState<LeaveRequest[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
+  const [mailSettings, setMailSettings] = useState<MailSettings>({
+    smtpHost: "",
+    smtpPort: 587,
+    smtpUser: "",
+    smtpFrom: "",
+    imapHost: "",
+    imapPort: 993,
+    imapUser: "",
+    imapSecure: true,
+    communicationMode: "MULTI",
+    smtpPassConfigured: false,
+    imapPassConfigured: false,
+  });
+  const [smtpPassInput, setSmtpPassInput] = useState("");
+  const [imapPassInput, setImapPassInput] = useState("");
+  const [newUserName, setNewUserName] = useState("");
+  const [newUserEmail, setNewUserEmail] = useState("");
+  const [newUserPassword, setNewUserPassword] = useState("");
+  const [newUserRole, setNewUserRole] = useState<AppRole>("EMPLOYEE");
+  const [newUserManagerId, setNewUserManagerId] = useState("");
+  const [selectedEditUserId, setSelectedEditUserId] = useState("");
+  const [editUserName, setEditUserName] = useState("");
+  const [editUserEmail, setEditUserEmail] = useState("");
+  const [editUserPassword, setEditUserPassword] = useState("");
+  const [editUserManagerId, setEditUserManagerId] = useState("");
+  const [editUserRole, setEditUserRole] = useState<AppRole>("EMPLOYEE");
+  const [selectedPermissionUserId, setSelectedPermissionUserId] = useState("");
+  const [selectedPermissionRole, setSelectedPermissionRole] = useState<AppRole>("EMPLOYEE");
+  const [selectedPermissionManagerId, setSelectedPermissionManagerId] = useState("");
+  const [usersBusy, setUsersBusy] = useState(false);
+  const [mailBusy, setMailBusy] = useState(false);
   const [attachmentsByRequest, setAttachmentsByRequest] = useState<Record<number, Attachment[]>>({});
   const [busyId, setBusyId] = useState<number | null>(null);
   const [uploadBusyId, setUploadBusyId] = useState<number | null>(null);
   const [error, setError] = useState("");
 
   const canModerate = useMemo(() => user?.role === "MANAGER" || user?.role === "ADMIN", [user]);
+  const isAdmin = useMemo(() => user?.role === "ADMIN", [user]);
 
   const clearSession = useCallback(() => {
     setUser(null);
     setToken(null);
     setRefreshToken(null);
     setPending([]);
+    setUsers([]);
+    setSelectedEditUserId("");
+    setEditUserName("");
+    setEditUserEmail("");
+    setEditUserPassword("");
+    setEditUserManagerId("");
+    setEditUserRole("EMPLOYEE");
+    setSelectedPermissionUserId("");
+    setSelectedPermissionRole("EMPLOYEE");
+    setSelectedPermissionManagerId("");
+    setSmtpPassInput("");
+    setImapPassInput("");
     setAttachmentsByRequest({});
     setComment("");
   }, []);
 
   async function login() {
     setError("");
-    const res = await fetch(`${API_URL}/auth/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),
-    });
 
-    if (!res.ok) {
-      setError("Logowanie nieudane.");
-      return;
-    }
-
-    const data = (await res.json()) as LoginResponse;
-    setUser(data.user);
-    setToken(data.accessToken);
-    setRefreshToken(data.refreshToken);
-
-    if (data.user.role === "MANAGER" || data.user.role === "ADMIN") {
-      const pendingRes = await fetch(`${API_URL}/leave-requests/pending`, {
-        headers: {
-          Authorization: `Bearer ${data.accessToken}`,
-        },
+    try {
+      const res = await fetch(`${API_URL}/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
       });
-      if (pendingRes.ok) {
-        const rows = (await pendingRes.json()) as LeaveRequest[];
-        setPending(rows);
+
+      if (!res.ok) {
+        setError("Logowanie nieudane.");
+        return;
       }
+
+      const data = (await res.json()) as LoginResponse;
+      setUser(data.user);
+      setToken(data.accessToken);
+      setRefreshToken(data.refreshToken);
+
+      if (data.user.role === "MANAGER" || data.user.role === "ADMIN") {
+        const authHeader = { Authorization: `Bearer ${data.accessToken}` };
+
+        const [pendingRes, usersRes, mailRes] = await Promise.all([
+          fetch(`${API_URL}/leave-requests/pending`, { headers: authHeader }),
+          fetch(`${API_URL}/auth/users`, { headers: authHeader }),
+          fetch(`${API_URL}/auth/mail-settings`, { headers: authHeader }),
+        ]);
+
+        if (pendingRes.ok) {
+          const rows = (await pendingRes.json()) as LeaveRequest[];
+          setPending(rows);
+        }
+
+        if (usersRes.ok) {
+          const rows = (await usersRes.json()) as User[];
+          setUsers(rows);
+        }
+
+        if (mailRes.ok) {
+          const settings = (await mailRes.json()) as MailSettings;
+          setMailSettings(settings);
+        }
+      }
+    } catch {
+      setError("Brak polaczenia z API.");
     }
   }
 
@@ -101,23 +190,35 @@ export default function Home() {
       return null;
     }
 
-    const first = await fetch(input, {
-      ...init,
-      headers: {
-        ...(init?.headers ?? {}),
-        Authorization: `Bearer ${token}`,
-      },
-    });
+    let first: Response;
+    try {
+      first = await fetch(input, {
+        ...init,
+        headers: {
+          ...(init?.headers ?? {}),
+          Authorization: `Bearer ${token}`,
+        },
+      });
+    } catch {
+      setError("Brak polaczenia z API.");
+      return null;
+    }
 
     if (first.status !== 401 || !refreshToken) {
       return first;
     }
 
-    const refreshRes = await fetch(`${API_URL}/auth/refresh`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ refreshToken }),
-    });
+    let refreshRes: Response;
+    try {
+      refreshRes = await fetch(`${API_URL}/auth/refresh`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refreshToken }),
+      });
+    } catch {
+      setError("Brak polaczenia z API.");
+      return first;
+    }
 
     if (!refreshRes.ok) {
       return first;
@@ -127,14 +228,33 @@ export default function Home() {
     setToken(refreshed.accessToken);
     setRefreshToken(refreshed.refreshToken);
 
-    return fetch(input, {
-      ...init,
-      headers: {
-        ...(init?.headers ?? {}),
-        Authorization: `Bearer ${refreshed.accessToken}`,
-      },
-    });
+    try {
+      return await fetch(input, {
+        ...init,
+        headers: {
+          ...(init?.headers ?? {}),
+          Authorization: `Bearer ${refreshed.accessToken}`,
+        },
+      });
+    } catch {
+      setError("Brak polaczenia z API.");
+      return null;
+    }
   }, [token, refreshToken]);
+
+  const loadUsers = useCallback(async () => {
+    if (!canModerate) {
+      return;
+    }
+
+    const res = await authFetch(`${API_URL}/auth/users`);
+    if (!res || !res.ok) {
+      return;
+    }
+
+    const rows = (await res.json()) as User[];
+    setUsers(rows);
+  }, [authFetch, canModerate]);
 
   const loadPending = useCallback(async () => {
     if (!user || !canModerate) {
@@ -247,6 +367,246 @@ export default function Home() {
     await loadPending();
   }
 
+  async function createUser() {
+    if (!newUserName.trim() || !newUserEmail.trim() || !newUserPassword.trim()) {
+      setError("Uzupelnij dane nowego uzytkownika.");
+      return;
+    }
+
+    setUsersBusy(true);
+    setError("");
+
+    const managerIdValue = Number(newUserManagerId);
+    const body: {
+      name: string;
+      email: string;
+      password: string;
+      role: AppRole;
+      managerId?: number;
+    } = {
+      name: newUserName.trim(),
+      email: newUserEmail.trim(),
+      password: newUserPassword,
+      role: newUserRole,
+    };
+
+    if (newUserRole === "EMPLOYEE") {
+      if (Number.isInteger(managerIdValue) && managerIdValue > 0) {
+        body.managerId = managerIdValue;
+      } else if (user?.role === "ADMIN" && managerOptions.length > 0) {
+        body.managerId = managerOptions[0].id;
+      }
+    }
+
+    const res = await authFetch(`${API_URL}/auth/users`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+
+    setUsersBusy(false);
+
+    if (!res || !res.ok) {
+      setError("Nie udalo sie utworzyc uzytkownika.");
+      return;
+    }
+
+    setNewUserName("");
+    setNewUserEmail("");
+    setNewUserPassword("");
+    setNewUserRole("EMPLOYEE");
+    setNewUserManagerId("");
+    await loadUsers();
+  }
+
+  async function updatePermissions() {
+    if (!selectedPermissionUserId) {
+      setError("Wybierz uzytkownika do zmiany uprawnien.");
+      return;
+    }
+
+    setUsersBusy(true);
+    setError("");
+
+    const userId = Number(selectedPermissionUserId);
+    const managerIdValue = Number(selectedPermissionManagerId);
+
+    const body: { role: AppRole; managerId?: number } = { role: selectedPermissionRole };
+    if (selectedPermissionRole === "EMPLOYEE" && Number.isInteger(managerIdValue) && managerIdValue > 0) {
+      body.managerId = managerIdValue;
+    }
+
+    const res = await authFetch(`${API_URL}/auth/users/${userId}/role`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+
+    setUsersBusy(false);
+
+    if (!res || !res.ok) {
+      setError("Nie udalo sie zaktualizowac uprawnien.");
+      return;
+    }
+
+    await loadUsers();
+  }
+
+  async function updateUserSettings() {
+    if (!selectedEditUserId) {
+      setError("Wybierz uzytkownika do edycji ustawien.");
+      return;
+    }
+
+    const selectedUser = users.find((item) => item.id === Number(selectedEditUserId));
+    if (!selectedUser) {
+      setError("Nie znaleziono wskazanego uzytkownika.");
+      return;
+    }
+
+    setUsersBusy(true);
+    setError("");
+
+    const body: {
+      name?: string;
+      email?: string;
+      password?: string;
+      managerId?: number;
+    } = {};
+
+    if (editUserName.trim() && editUserName.trim() !== selectedUser.name) {
+      body.name = editUserName.trim();
+    }
+
+    if (editUserEmail.trim() && editUserEmail.trim() !== selectedUser.email) {
+      body.email = editUserEmail.trim();
+    }
+
+    if (editUserPassword.trim()) {
+      body.password = editUserPassword;
+    }
+
+    if (selectedUser.role === "EMPLOYEE") {
+      const managerValue = Number(editUserManagerId);
+      if (Number.isInteger(managerValue) && managerValue > 0 && managerValue !== selectedUser.managerId) {
+        body.managerId = managerValue;
+      }
+    }
+
+    if (Object.keys(body).length === 0) {
+      setUsersBusy(false);
+      setError("Brak zmian do zapisania.");
+      return;
+    }
+
+    let res: Response | null = null;
+    if (Object.keys(body).length > 0) {
+      res = await authFetch(`${API_URL}/auth/users/${selectedUser.id}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      });
+
+      if (!res || !res.ok) {
+        setUsersBusy(false);
+        setError("Nie udalo sie zapisac ustawien uzytkownika.");
+        return;
+      }
+    }
+
+    if (isAdmin && editUserRole !== selectedUser.role) {
+      const roleBody: { role: AppRole; managerId?: number } = { role: editUserRole };
+      if (editUserRole === "EMPLOYEE") {
+        const managerValue = Number(editUserManagerId);
+        if (Number.isInteger(managerValue) && managerValue > 0) {
+          roleBody.managerId = managerValue;
+        }
+      }
+
+      const roleRes = await authFetch(`${API_URL}/auth/users/${selectedUser.id}/role`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(roleBody),
+      });
+
+      if (!roleRes || !roleRes.ok) {
+        setUsersBusy(false);
+        setError("Nie udalo sie zapisac roli uzytkownika.");
+        return;
+      }
+    }
+
+    setUsersBusy(false);
+
+    setEditUserPassword("");
+    await loadUsers();
+  }
+
+  async function saveMailSettings() {
+    setMailBusy(true);
+    setError("");
+
+    const body: {
+      smtpHost: string;
+      smtpPort: number;
+      smtpUser: string;
+      smtpFrom: string;
+      imapHost: string;
+      imapPort: number;
+      imapUser: string;
+      imapSecure: number;
+      communicationMode: "MULTI" | "EMAIL_ONLY";
+      smtpPass?: string;
+      imapPass?: string;
+    } = {
+      smtpHost: mailSettings.smtpHost.trim(),
+      smtpPort: Number(mailSettings.smtpPort),
+      smtpUser: mailSettings.smtpUser.trim(),
+      smtpFrom: mailSettings.smtpFrom.trim(),
+      imapHost: mailSettings.imapHost.trim(),
+      imapPort: Number(mailSettings.imapPort),
+      imapUser: mailSettings.imapUser.trim(),
+      imapSecure: mailSettings.imapSecure ? 1 : 0,
+      communicationMode: mailSettings.communicationMode,
+    };
+
+    if (smtpPassInput.trim()) {
+      body.smtpPass = smtpPassInput;
+    }
+
+    if (imapPassInput.trim()) {
+      body.imapPass = imapPassInput;
+    }
+
+    const res = await authFetch(`${API_URL}/auth/mail-settings`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+
+    setMailBusy(false);
+
+    if (!res || !res.ok) {
+      setError("Nie udalo sie zapisac konfiguracji poczty.");
+      return;
+    }
+
+    const data = (await res.json()) as MailSettings;
+    setMailSettings(data);
+    setSmtpPassInput("");
+    setImapPassInput("");
+  }
+
   async function logoutCurrentSession() {
     if (!token || !refreshToken) {
       clearSession();
@@ -306,6 +666,11 @@ export default function Home() {
     };
   }, [user, canModerate, loadPending, token]);
 
+  const managerOptions = users.filter((item) => item.role === "MANAGER" || item.role === "ADMIN");
+
+  const availableRolesForCreate: AppRole[] =
+    user?.role === "ADMIN" ? ["EMPLOYEE", "MANAGER", "ADMIN"] : ["EMPLOYEE"];
+
   return (
     <div className="min-h-screen bg-slate-100 p-6 text-slate-900">
       <main className="mx-auto max-w-5xl space-y-6">
@@ -346,7 +711,7 @@ export default function Home() {
         {user && (
           <section className="rounded-xl bg-white p-5 shadow">
             <p>
-              Zalogowany: <strong>{user.name}</strong> ({user.role})
+              Zalogowany: <strong>{user.name}</strong> ({roleLabel(user.role)})
             </p>
             <div className="mt-3 flex gap-2">
               <button
@@ -444,6 +809,355 @@ export default function Home() {
                 </div>
               </article>
             ))}
+          </section>
+        )}
+
+        {user && canModerate && (
+          <section className="space-y-4 rounded-xl bg-white p-5 shadow">
+            <h2 className="text-lg font-semibold">Uzytkownicy i uprawnienia</h2>
+
+            <div className="rounded border border-slate-200 p-4">
+              <h3 className="mb-2 font-semibold">Dodaj nowego uzytkownika (szef/admin)</h3>
+              <div className="grid gap-3 md:grid-cols-2">
+                <input
+                  className="rounded border border-slate-300 p-2"
+                  placeholder="Imie i nazwisko"
+                  value={newUserName}
+                  onChange={(e) => setNewUserName(e.target.value)}
+                />
+                <input
+                  className="rounded border border-slate-300 p-2"
+                  placeholder="Email"
+                  value={newUserEmail}
+                  onChange={(e) => setNewUserEmail(e.target.value)}
+                />
+                <input
+                  className="rounded border border-slate-300 p-2"
+                  placeholder="Haslo"
+                  type="password"
+                  value={newUserPassword}
+                  onChange={(e) => setNewUserPassword(e.target.value)}
+                />
+                <select
+                  className="rounded border border-slate-300 p-2"
+                  value={newUserRole}
+                  onChange={(e) => setNewUserRole(e.target.value as AppRole)}
+                >
+                  {availableRolesForCreate.map((role) => (
+                    <option key={role} value={role}>
+                      {roleLabel(role)}
+                    </option>
+                  ))}
+                </select>
+                {newUserRole === "EMPLOYEE" && (
+                  <input
+                    className="rounded border border-slate-300 p-2"
+                    placeholder="ID kierownika (opcjonalnie)"
+                    value={newUserManagerId}
+                    onChange={(e) => setNewUserManagerId(e.target.value)}
+                  />
+                )}
+              </div>
+              <button
+                disabled={usersBusy}
+                className="mt-3 rounded bg-slate-900 px-4 py-2 text-white disabled:opacity-50"
+                onClick={() => {
+                  void createUser();
+                }}
+              >
+                Dodaj uzytkownika
+              </button>
+            </div>
+
+            <div className="rounded border border-slate-200 p-4">
+              <h3 className="mb-2 font-semibold">Edycja ustawien uzytkownika</h3>
+              <div className="grid gap-3 md:grid-cols-2">
+                <select
+                  className="rounded border border-slate-300 p-2"
+                  value={selectedEditUserId}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setSelectedEditUserId(value);
+
+                    const selected = users.find((item) => item.id === Number(value));
+                    if (!selected) {
+                      setEditUserName("");
+                      setEditUserEmail("");
+                      setEditUserPassword("");
+                      setEditUserManagerId("");
+                      return;
+                    }
+
+                    setEditUserName(selected.name);
+                    setEditUserEmail(selected.email);
+                    setEditUserPassword("");
+                    setEditUserManagerId(selected.managerId ? String(selected.managerId) : "");
+                    setEditUserRole(selected.role);
+                  }}
+                >
+                  <option value="">Wybierz uzytkownika</option>
+                  {users.map((item) => (
+                    <option key={item.id} value={String(item.id)}>
+                      #{item.id} {item.name} ({roleLabel(item.role)})
+                    </option>
+                  ))}
+                </select>
+                {isAdmin && (
+                  <select
+                    className="rounded border border-slate-300 p-2"
+                    value={editUserRole}
+                    onChange={(e) => setEditUserRole(e.target.value as AppRole)}
+                    disabled={!selectedEditUserId}
+                  >
+                    <option value="EMPLOYEE">Pracownik</option>
+                    <option value="MANAGER">Kierownik</option>
+                    <option value="ADMIN">Administrator</option>
+                  </select>
+                )}
+                <input
+                  className="rounded border border-slate-300 p-2"
+                  placeholder="Imie i nazwisko"
+                  value={editUserName}
+                  onChange={(e) => setEditUserName(e.target.value)}
+                  disabled={!selectedEditUserId}
+                />
+                <input
+                  className="rounded border border-slate-300 p-2"
+                  placeholder="Email"
+                  value={editUserEmail}
+                  onChange={(e) => setEditUserEmail(e.target.value)}
+                  disabled={!selectedEditUserId}
+                />
+                <input
+                  className="rounded border border-slate-300 p-2"
+                  placeholder="Nowe haslo (opcjonalnie)"
+                  type="password"
+                  value={editUserPassword}
+                  onChange={(e) => setEditUserPassword(e.target.value)}
+                  disabled={!selectedEditUserId}
+                />
+                {users.find((item) => item.id === Number(selectedEditUserId))?.role === "EMPLOYEE" && (
+                  <input
+                    className="rounded border border-slate-300 p-2"
+                    placeholder="ID kierownika"
+                    value={editUserManagerId}
+                    onChange={(e) => setEditUserManagerId(e.target.value)}
+                    disabled={!selectedEditUserId}
+                  />
+                )}
+              </div>
+              <button
+                disabled={usersBusy || !selectedEditUserId}
+                className="mt-3 rounded bg-amber-700 px-4 py-2 text-white disabled:opacity-50"
+                onClick={() => {
+                  void updateUserSettings();
+                }}
+              >
+                Zapisz ustawienia uzytkownika
+              </button>
+            </div>
+
+            {isAdmin && (
+              <div className="rounded border border-slate-200 p-4">
+                <h3 className="mb-2 font-semibold">Zmien uprawnienia (administrator)</h3>
+                <div className="grid gap-3 md:grid-cols-3">
+                  <select
+                    className="rounded border border-slate-300 p-2"
+                    value={selectedPermissionUserId}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setSelectedPermissionUserId(value);
+
+                      const selected = users.find((item) => item.id === Number(value));
+                      if (!selected) {
+                        return;
+                      }
+
+                      setSelectedPermissionRole(selected.role);
+                      setSelectedPermissionManagerId(selected.managerId ? String(selected.managerId) : "");
+                    }}
+                  >
+                    <option value="">Wybierz uzytkownika</option>
+                    {users.map((item) => (
+                      <option key={item.id} value={String(item.id)}>
+                        #{item.id} {item.name} ({roleLabel(item.role)})
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    className="rounded border border-slate-300 p-2"
+                    value={selectedPermissionRole}
+                    onChange={(e) => setSelectedPermissionRole(e.target.value as AppRole)}
+                  >
+                    <option value="EMPLOYEE">Pracownik</option>
+                    <option value="MANAGER">Kierownik</option>
+                    <option value="ADMIN">Administrator</option>
+                  </select>
+                  {selectedPermissionRole === "EMPLOYEE" && (
+                    <input
+                      className="rounded border border-slate-300 p-2"
+                      placeholder="ID kierownika"
+                      value={selectedPermissionManagerId}
+                      onChange={(e) => setSelectedPermissionManagerId(e.target.value)}
+                    />
+                  )}
+                </div>
+                <button
+                  disabled={usersBusy}
+                  className="mt-3 rounded bg-indigo-700 px-4 py-2 text-white disabled:opacity-50"
+                  onClick={() => {
+                    void updatePermissions();
+                  }}
+                >
+                  Zapisz uprawnienia
+                </button>
+              </div>
+            )}
+
+            <div className="overflow-x-auto rounded border border-slate-200">
+              <table className="min-w-full text-sm">
+                <thead className="bg-slate-50 text-left">
+                  <tr>
+                    <th className="px-3 py-2">ID</th>
+                    <th className="px-3 py-2">Imie</th>
+                    <th className="px-3 py-2">Email</th>
+                    <th className="px-3 py-2">Rola</th>
+                    <th className="px-3 py-2">Kierownik</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {users.map((item) => (
+                    <tr key={item.id} className="border-t border-slate-200">
+                      <td className="px-3 py-2">{item.id}</td>
+                      <td className="px-3 py-2">{item.name}</td>
+                      <td className="px-3 py-2">{item.email}</td>
+                      <td className="px-3 py-2">{roleLabel(item.role)}</td>
+                      <td className="px-3 py-2">{item.managerId ?? "-"}</td>
+                    </tr>
+                  ))}
+                  {users.length === 0 && (
+                    <tr>
+                      <td className="px-3 py-2 text-slate-500" colSpan={5}>
+                        Brak danych uzytkownikow.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {managerOptions.length > 0 && (
+              <p className="text-xs text-slate-500">
+                Dostepni kierownicy/admini (do przypisania pracownikow): {managerOptions.map((item) => item.id).join(", ")}
+              </p>
+            )}
+          </section>
+        )}
+
+        {user && canModerate && (
+          <section className="space-y-4 rounded-xl bg-white p-5 shadow">
+            <h2 className="text-lg font-semibold">Konfiguracja poczty i komunikacji</h2>
+
+            <h3 className="font-semibold">Poczta wychodzaca (SMTP)</h3>
+            <div className="grid gap-3 md:grid-cols-2">
+              <input
+                className="rounded border border-slate-300 p-2"
+                placeholder="Serwer SMTP"
+                value={mailSettings.smtpHost}
+                onChange={(e) => setMailSettings((prev) => ({ ...prev, smtpHost: e.target.value }))}
+              />
+              <input
+                className="rounded border border-slate-300 p-2"
+                placeholder="Port SMTP"
+                type="number"
+                value={mailSettings.smtpPort}
+                onChange={(e) =>
+                  setMailSettings((prev) => ({ ...prev, smtpPort: Number(e.target.value) || 0 }))
+                }
+              />
+              <input
+                className="rounded border border-slate-300 p-2"
+                placeholder="Uzytkownik SMTP"
+                value={mailSettings.smtpUser}
+                onChange={(e) => setMailSettings((prev) => ({ ...prev, smtpUser: e.target.value }))}
+              />
+              <input
+                className="rounded border border-slate-300 p-2"
+                placeholder="Adres nadawcy SMTP"
+                value={mailSettings.smtpFrom}
+                onChange={(e) => setMailSettings((prev) => ({ ...prev, smtpFrom: e.target.value }))}
+              />
+              <input
+                className="rounded border border-slate-300 p-2"
+                placeholder={mailSettings.smtpPassConfigured ? "Nowe haslo SMTP (opcjonalnie)" : "Haslo SMTP"}
+                type="password"
+                value={smtpPassInput}
+                onChange={(e) => setSmtpPassInput(e.target.value)}
+              />
+            </div>
+
+            <h3 className="font-semibold">Poczta przychodzaca (IMAP)</h3>
+            <div className="grid gap-3 md:grid-cols-2">
+              <input
+                className="rounded border border-slate-300 p-2"
+                placeholder="Serwer IMAP"
+                value={mailSettings.imapHost}
+                onChange={(e) => setMailSettings((prev) => ({ ...prev, imapHost: e.target.value }))}
+              />
+              <input
+                className="rounded border border-slate-300 p-2"
+                placeholder="Port IMAP"
+                type="number"
+                value={mailSettings.imapPort}
+                onChange={(e) =>
+                  setMailSettings((prev) => ({ ...prev, imapPort: Number(e.target.value) || 0 }))
+                }
+              />
+              <input
+                className="rounded border border-slate-300 p-2"
+                placeholder="Uzytkownik IMAP"
+                value={mailSettings.imapUser}
+                onChange={(e) => setMailSettings((prev) => ({ ...prev, imapUser: e.target.value }))}
+              />
+              <input
+                className="rounded border border-slate-300 p-2"
+                placeholder={mailSettings.imapPassConfigured ? "Nowe haslo IMAP (opcjonalnie)" : "Haslo IMAP"}
+                type="password"
+                value={imapPassInput}
+                onChange={(e) => setImapPassInput(e.target.value)}
+              />
+              <label className="flex items-center gap-2 rounded border border-slate-300 p-2">
+                <input
+                  type="checkbox"
+                  checked={mailSettings.imapSecure}
+                  onChange={(e) => setMailSettings((prev) => ({ ...prev, imapSecure: e.target.checked }))}
+                />
+                Polaczenie bezpieczne IMAP (SSL/TLS)
+              </label>
+
+              <select
+                className="rounded border border-slate-300 p-2"
+                value={mailSettings.communicationMode}
+                onChange={(e) =>
+                  setMailSettings((prev) => ({
+                    ...prev,
+                    communicationMode: e.target.value as "MULTI" | "EMAIL_ONLY",
+                  }))
+                }
+              >
+                <option value="MULTI">Wiele kanalow (aplikacja + e-mail)</option>
+                <option value="EMAIL_ONLY">Tylko e-mail</option>
+              </select>
+            </div>
+            <button
+              disabled={mailBusy}
+              className="rounded bg-slate-900 px-4 py-2 text-white disabled:opacity-50"
+              onClick={() => {
+                void saveMailSettings();
+              }}
+            >
+              Zapisz konfiguracje poczty
+            </button>
           </section>
         )}
 

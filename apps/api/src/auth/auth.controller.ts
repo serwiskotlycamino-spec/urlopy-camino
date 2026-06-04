@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Put, UseGuards } from '@nestjs/common';
 import { LoginDto } from './dto/login.dto';
 import { AuthService } from './auth.service';
 import { AuthGuard } from './auth.guard';
@@ -8,6 +8,10 @@ import { CurrentUser } from './current-user.decorator';
 import type { AuthUser } from './types';
 import { DeviceTokenDto } from './dto/device-token.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
+import { CreateUserDto } from './dto/create-user.dto';
+import { UpdateUserRoleDto } from './dto/update-user-role.dto';
+import { UpdateMailSettingsDto } from './dto/update-mail-settings.dto';
+import { UpdateUserSettingsDto } from './dto/update-user-settings.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -28,6 +32,41 @@ export class AuthController {
   @Get('users')
   getUsers() {
     return this.authService.getUsers();
+  }
+
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles('ADMIN', 'MANAGER')
+  @Post('users')
+  createUser(@CurrentUser() user: AuthUser, @Body() body: CreateUserDto) {
+    return this.authService.createUser(user, body);
+  }
+
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @Patch('users/:id/role')
+  updateUserRole(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() body: UpdateUserRoleDto) {
+    return this.authService.updateUserRole(user, Number(id), body);
+  }
+
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles('ADMIN', 'MANAGER')
+  @Patch('users/:id')
+  updateUserSettings(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() body: UpdateUserSettingsDto) {
+    return this.authService.updateUserSettings(user, Number(id), body);
+  }
+
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles('ADMIN', 'MANAGER')
+  @Get('mail-settings')
+  getMailSettings() {
+    return this.authService.getMailSettings();
+  }
+
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles('ADMIN', 'MANAGER')
+  @Put('mail-settings')
+  updateMailSettings(@CurrentUser() user: AuthUser, @Body() body: UpdateMailSettingsDto) {
+    return this.authService.updateMailSettings(user, body);
   }
 
   @UseGuards(AuthGuard)

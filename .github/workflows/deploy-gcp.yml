@@ -1,0 +1,91 @@
+name: Deploy To Google Cloud Run
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+  REGION: ${{ vars.GCP_REGION }}
+  REPOSITORY: ${{ vars.GCP_ARTIFACT_REPOSITORY }}
+  API_SERVICE: ${{ vars.GCP_CLOUD_RUN_API_SERVICE }}
+  WEB_SERVICE: ${{ vars.GCP_CLOUD_RUN_WEB_SERVICE }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate required variables
+        run: |
+          test -n "$PROJECT_ID"
+          test -n "$REGION"
+          test -n "$REPOSITORY"
+          test -n "$API_SERVICE"
+          test -n "$WEB_SERVICE"
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+
+      - name: Configure Docker auth
+        run: gcloud auth configure-docker $REGION-docker.pkg.dev --quiet
+
+      - name: Ensure Artifact Registry repository exists
+        run: |
+          gcloud artifacts repositories create "$REPOSITORY" \
+            --repository-format=docker \
+            --location="$REGION" \
+            --description="Urlopy Camino Docker images" \
+            || true
+
+      - name: Build and push API image
+        run: |
+          API_IMAGE="$REGION-docker.pkg.dev/$PROJECT_ID/$REPOSITORY/urlopy-api:${{ github.sha }}"
+          docker build -f apps/api/Dockerfile -t "$API_IMAGE" .
+          docker push "$API_IMAGE"
+          echo "API_IMAGE=$API_IMAGE" >> $GITHUB_ENV
+
+      - name: Build and push Web image
+        run: |
+          WEB_IMAGE="$REGION-docker.pkg.dev/$PROJECT_ID/$REPOSITORY/urlopy-web:${{ github.sha }}"
+          docker build -f apps/web-admin/Dockerfile -t "$WEB_IMAGE" .
+          docker push "$WEB_IMAGE"
+          echo "WEB_IMAGE=$WEB_IMAGE" >> $GITHUB_ENV
+
+      - name: Deploy API service
+        run: |
+          gcloud run deploy "$API_SERVICE" \
+            --image "$API_IMAGE" \
+            --region "$REGION" \
+            --platform managed \
+            --allow-unauthenticated \
+            --port 8080
+
+      - name: Deploy Web service
+        run: |
+          gcloud run deploy "$WEB_SERVICE" \
+            --image "$WEB_IMAGE" \
+            --region "$REGION" \
+            --platform managed \
+            --allow-unauthenticated \
+            --port 8080
+
+      - name: Print service URLs
+        run: |
+          echo "API_URL=$(gcloud run services describe "$API_SERVICE" --region "$REGION" --format='value(status.url)')"
+          echo "WEB_URL=$(gcloud run services describe "$WEB_SERVICE" --region "$REGION" --format='value(status.url)')"
