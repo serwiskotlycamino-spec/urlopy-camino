@@ -30,18 +30,21 @@ jobs:
           REPOSITORY="${{ vars.GCP_ARTIFACT_REPOSITORY }}"
           API_SERVICE="${{ vars.GCP_CLOUD_RUN_API_SERVICE }}"
           WEB_SERVICE="${{ vars.GCP_CLOUD_RUN_WEB_SERVICE }}"
+          SQL_INSTANCE="${{ vars.GCP_CLOUD_SQL_INSTANCE }}"
 
           PROJECT_ID="$(sanitize "$PROJECT_ID")"
           REGION="$(sanitize "$REGION")"
           REPOSITORY="$(sanitize "$REPOSITORY")"
           API_SERVICE="$(sanitize "$API_SERVICE")"
           WEB_SERVICE="$(sanitize "$WEB_SERVICE")"
+          SQL_INSTANCE="$(sanitize "$SQL_INSTANCE")"
 
           PROJECT_ID="${PROJECT_ID:-urlopy-camino}"
           REGION="${REGION:-europe-central2}"
           REPOSITORY="${REPOSITORY:-urlopy}"
           API_SERVICE="${API_SERVICE:-urlopy-api}"
           WEB_SERVICE="${WEB_SERVICE:-urlopy-web}"
+          SQL_INSTANCE="${SQL_INSTANCE:-urlopy-camino:europe-central2:urlopy-pg}"
 
           {
             echo "PROJECT_ID=$PROJECT_ID"
@@ -49,6 +52,7 @@ jobs:
             echo "REPOSITORY=$REPOSITORY"
             echo "API_SERVICE=$API_SERVICE"
             echo "WEB_SERVICE=$WEB_SERVICE"
+            echo "SQL_INSTANCE=$SQL_INSTANCE"
           } >> "$GITHUB_ENV"
 
       - name: Validate required variables
@@ -59,6 +63,7 @@ jobs:
           : "${REPOSITORY:?Missing REPOSITORY}"
           : "${API_SERVICE:?Missing API_SERVICE}"
           : "${WEB_SERVICE:?Missing WEB_SERVICE}"
+          : "${SQL_INSTANCE:?Missing SQL_INSTANCE}"
 
       - name: Validate required secrets
         env:
@@ -111,6 +116,7 @@ jobs:
             --platform managed \
             --allow-unauthenticated \
             --port 8080 \
+            --add-cloudsql-instances "$SQL_INSTANCE" \
             --set-env-vars "DATABASE_URL=$DATABASE_URL"
 
       - name: Deploy Web service
