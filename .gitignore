@@ -18,3 +18,7 @@ apps/mobile-worker/expo-config.json
 
 # Local Android SDK platform-tools copied for manual testing
 tools/platform-tools/
+
+# .NET desktop artifacts
+**/bin/
+**/obj/
