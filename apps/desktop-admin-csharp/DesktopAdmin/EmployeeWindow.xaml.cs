@@ -15,6 +15,9 @@ public partial class EmployeeWindow : Window
         _apiClient = apiClient;
         _session = session;
 
+        var settings = AppSettings.Load();
+        WindowPersistence.Attach(this, settings, "Employee", MineGrid);
+
         HeaderTextBlock.Text = $"Panel pracownika - {_session.User.Name}";
         ApiInfoTextBlock.Text = $"API: {_apiClient.BaseUrl}";
 

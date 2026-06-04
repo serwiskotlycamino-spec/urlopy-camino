@@ -16,6 +16,9 @@ public partial class ManagerWindow : Window
         _apiClient = apiClient;
         _session = session;
 
+        var settings = AppSettings.Load();
+        WindowPersistence.Attach(this, settings, "Manager", PendingGrid);
+
         HeaderTextBlock.Text = $"Panel szefa - {_session.User.Name}";
         ApiInfoTextBlock.Text = $"API: {_apiClient.BaseUrl}";
 

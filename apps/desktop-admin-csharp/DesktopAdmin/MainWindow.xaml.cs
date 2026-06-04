@@ -25,6 +25,9 @@ public partial class MainWindow : Window
         InitializeComponent();
         _apiClient = apiClient;
 
+        var settings = AppSettings.Load();
+        WindowPersistence.Attach(this, settings, "Admin", PendingGrid, UsersGrid);
+
         ApiUrlTextBox.Text = _apiClient.BaseUrl;
         EmailTextBox.Text = "serwis@kotlycamino.pl";
         PasswordBox.Password = "Camino2023?";

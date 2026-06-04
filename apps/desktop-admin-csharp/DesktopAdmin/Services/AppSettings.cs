@@ -20,6 +20,24 @@ public sealed class AppSettings
 
     public string LastEmail { get; set; } = "serwis@kotlycamino.pl";
 
+    // Window geometry per window key
+    public Dictionary<string, WindowGeometry> Windows { get; set; } = new();
+
+    // Column widths per window key, per column header
+    public Dictionary<string, Dictionary<string, double>> ColumnWidths { get; set; } = new();
+
+    public WindowGeometry GetWindow(string key) =>
+        Windows.TryGetValue(key, out var g) ? g : new WindowGeometry();
+
+    public void SetWindow(string key, WindowGeometry geometry) =>
+        Windows[key] = geometry;
+
+    public Dictionary<string, double> GetColumns(string key) =>
+        ColumnWidths.TryGetValue(key, out var c) ? c : new Dictionary<string, double>();
+
+    public void SetColumns(string key, Dictionary<string, double> columns) =>
+        ColumnWidths[key] = columns;
+
     public static AppSettings Load()
     {
         try
@@ -50,4 +68,13 @@ public sealed class AppSettings
             // Don't crash the app on settings save failure.
         }
     }
+}
+
+public sealed class WindowGeometry
+{
+    public double Left { get; set; } = double.NaN;
+    public double Top { get; set; } = double.NaN;
+    public double Width { get; set; } = double.NaN;
+    public double Height { get; set; } = double.NaN;
+    public bool Maximized { get; set; } = false;
 }

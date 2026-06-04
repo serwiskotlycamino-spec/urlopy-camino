@@ -12,6 +12,8 @@ public partial class LoginWindow : Window
     {
         InitializeComponent();
 
+        WindowPersistence.Attach(this, _settings, "Login");
+
         ApiUrlTextBox.Text = _settings.ApiUrl;
         EmailTextBox.Text = _settings.LastEmail;
         PasswordBox.Password = "12345678";
