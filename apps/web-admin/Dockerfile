@@ -3,7 +3,7 @@ WORKDIR /app
 
 COPY package*.json ./
 COPY apps/web-admin/package*.json ./apps/web-admin/
-RUN npm install --include=optional
+RUN rm -f package-lock.json && npm install --include=optional
 
 COPY . .
 RUN npm --workspace apps/web-admin run build
