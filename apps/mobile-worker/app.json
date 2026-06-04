@@ -15,6 +15,11 @@
       "usesCleartextTraffic": true,
       "versionCode": 2
     },
-    "owner": "serwiss-team"
+    "owner": "serwiss-team",
+    "extra": {
+      "eas": {
+        "projectId": "1a6d5842-c9ce-4b12-a571-458a943c82f3"
+      }
+    }
   }
 }
