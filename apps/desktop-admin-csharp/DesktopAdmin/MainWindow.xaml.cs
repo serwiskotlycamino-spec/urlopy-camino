@@ -16,13 +16,18 @@ public partial class MainWindow : Window
     private LoginResponse? _session;
 
     public MainWindow()
+        : this(new ApiClient(DefaultApiUrl), null)
+    {
+    }
+
+    public MainWindow(ApiClient apiClient, LoginResponse? session)
     {
         InitializeComponent();
-        _apiClient = new ApiClient(DefaultApiUrl);
+        _apiClient = apiClient;
 
-        ApiUrlTextBox.Text = DefaultApiUrl;
-        EmailTextBox.Text = "admin@firma.local";
-        PasswordBox.Password = "admin123";
+        ApiUrlTextBox.Text = _apiClient.BaseUrl;
+        EmailTextBox.Text = "serwis@kotlycamino.pl";
+        PasswordBox.Password = "Camino2023?";
 
         NewUserRoleCombo.ItemsSource = new[] { "ADMIN", "MANAGER", "EMPLOYEE" };
         NewUserRoleCombo.SelectedIndex = 2;
@@ -32,6 +37,20 @@ public partial class MainWindow : Window
 
         CommunicationModeCombo.ItemsSource = new[] { "MULTI", "EMAIL_ONLY" };
         CommunicationModeCombo.SelectedIndex = 0;
+
+        if (session is not null)
+        {
+            _session = session;
+            CurrentUserTextBlock.Text = $"Zalogowano: {session.User.Name} ({session.User.Role})";
+            LoginPanel.Visibility = Visibility.Collapsed;
+            ApplyApiButton.IsEnabled = false;
+            MainTabs.IsEnabled = true;
+
+            Loaded += async (_, _) =>
+            {
+                await RunBusyAsync(LoadAdminDataAsync);
+            };
+        }
     }
 
     private void SetStatus(string message)
@@ -327,5 +346,29 @@ public partial class MainWindow : Window
             UpdateRoleCombo.SelectedItem = selected.Role;
             UpdateRoleManagerIdTextBox.Text = selected.ManagerId?.ToString() ?? string.Empty;
         }
+    }
+
+    private async void LogoutButton_Click(object sender, RoutedEventArgs e)
+    {
+        await RunBusyAsync(async () =>
+        {
+            try
+            {
+                await _apiClient.LogoutAsync();
+            }
+            catch
+            {
+                // Allow local logout even if API session is already invalid.
+            }
+
+            var loginWindow = new LoginWindow();
+            loginWindow.Show();
+            Close();
+        });
+    }
+
+    private void CloseButton_Click(object sender, RoutedEventArgs e)
+    {
+        Close();
     }
 }

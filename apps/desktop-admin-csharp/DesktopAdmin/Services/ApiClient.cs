@@ -32,6 +32,8 @@ public sealed class ApiClient
         };
     }
 
+    public string BaseUrl => _httpClient.BaseAddress?.ToString().TrimEnd('/') ?? string.Empty;
+
     public async Task<LoginResponse> LoginAsync(string email, string password)
     {
         var payload = new
@@ -48,6 +50,11 @@ public sealed class ApiClient
 
     public Task<List<LeaveRequest>> GetPendingAsync() => SendAsync<List<LeaveRequest>>(HttpMethod.Get, "leave-requests/pending");
 
+    public Task<List<LeaveRequest>> GetMineAsync() => SendAsync<List<LeaveRequest>>(HttpMethod.Get, "leave-requests/mine");
+
+    public Task<LeaveRequest> CreateLeaveRequestAsync(CreateLeaveRequestRequest request) =>
+        SendAsync<LeaveRequest>(HttpMethod.Post, "leave-requests", request);
+
     public Task<List<UserSummary>> GetUsersAsync() => SendAsync<List<UserSummary>>(HttpMethod.Get, "auth/users");
 
     public Task<UserSummary> CreateUserAsync(CreateUserRequest request) =>
@@ -60,6 +67,8 @@ public sealed class ApiClient
 
     public Task<MailSettings> UpdateMailSettingsAsync(UpdateMailSettingsRequest request) =>
         SendAsync<MailSettings>(HttpMethod.Put, "auth/mail-settings", request);
+
+    public Task LogoutAsync() => SendAsync<object>(HttpMethod.Post, "auth/logout", new { });
 
     public Task<LeaveRequest> DecideAsync(int leaveRequestId, string decision, string? comment) =>
         SendAsync<LeaveRequest>(HttpMethod.Patch, $"leave-requests/{leaveRequestId}/decision", new { decision, comment });
@@ -90,7 +99,7 @@ public sealed class ApiClient
 
         if (!response.IsSuccessStatusCode)
         {
-            throw new InvalidOperationException($"API error {(int)response.StatusCode}: {responseText}");
+            throw new InvalidOperationException(ExtractApiMessage(response.StatusCode, responseText));
         }
 
         var parsed = JsonSerializer.Deserialize<T>(responseText, JsonOptions);
@@ -133,5 +142,48 @@ public sealed class ApiClient
         _accessToken = parsed.AccessToken;
         _refreshToken = parsed.RefreshToken;
         return true;
+    }
+
+    private static string ExtractApiMessage(HttpStatusCode statusCode, string responseText)
+    {
+        if (!string.IsNullOrWhiteSpace(responseText))
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(responseText);
+                if (doc.RootElement.TryGetProperty("message", out var messageElement))
+                {
+                    if (messageElement.ValueKind == JsonValueKind.String)
+                    {
+                        var message = messageElement.GetString();
+                        if (!string.IsNullOrWhiteSpace(message))
+                        {
+                            return message;
+                        }
+                    }
+
+                    if (messageElement.ValueKind == JsonValueKind.Array)
+                    {
+                        var messages = messageElement
+                            .EnumerateArray()
+                            .Where(x => x.ValueKind == JsonValueKind.String)
+                            .Select(x => x.GetString())
+                            .Where(x => !string.IsNullOrWhiteSpace(x));
+
+                        var combined = string.Join("; ", messages!);
+                        if (!string.IsNullOrWhiteSpace(combined))
+                        {
+                            return combined;
+                        }
+                    }
+                }
+            }
+            catch (JsonException)
+            {
+                // Keep fallback below for non-JSON responses.
+            }
+        }
+
+        return $"Blad API {(int)statusCode}.";
     }
 }

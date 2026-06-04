@@ -1,0 +1,105 @@
+<Window x:Class="DesktopAdmin.EmployeeWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Urlopy Camino - Panel pracownika"
+        Height="760"
+        Width="1180"
+        MinHeight="680"
+        MinWidth="980"
+        WindowStartupLocation="CenterScreen">
+    <Grid Margin="14">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Grid Grid.Row="0" Margin="0,0,0,10">
+            <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <TextBlock Grid.Column="0"
+                   x:Name="HeaderTextBlock"
+                   Text="Panel pracownika"
+                   FontSize="22"
+                   FontWeight="Bold"
+                   VerticalAlignment="Center" />
+
+            <Button Grid.Column="1"
+                x:Name="LogoutButton"
+                Content="Wyloguj"
+                Width="110"
+                Margin="0,0,8,0"
+                Click="LogoutButton_Click" />
+
+            <Button Grid.Column="2"
+                x:Name="CloseButton"
+                Content="Zamknij"
+                Width="100"
+                Click="CloseButton_Click" />
+        </Grid>
+
+        <TextBlock Grid.Row="1"
+                   x:Name="ApiInfoTextBlock"
+                   Foreground="#666"
+                   Margin="0,0,0,10" />
+
+        <Border Grid.Row="2" BorderBrush="#D0D0D0" BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,0,0,10">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="90" />
+                    <ColumnDefinition Width="130" />
+                    <ColumnDefinition Width="70" />
+                    <ColumnDefinition Width="140" />
+                    <ColumnDefinition Width="70" />
+                    <ColumnDefinition Width="140" />
+                    <ColumnDefinition Width="70" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="120" />
+                </Grid.ColumnDefinitions>
+
+                <TextBlock Grid.Column="0" Text="Typ" VerticalAlignment="Center" />
+                <ComboBox Grid.Column="1" x:Name="LeaveTypeCombo" Margin="6,0,10,0" />
+
+                <TextBlock Grid.Column="2" Text="Od" VerticalAlignment="Center" />
+                <DatePicker Grid.Column="3" x:Name="StartDatePicker" Margin="6,0,10,0" />
+
+                <TextBlock Grid.Column="4" Text="Do" VerticalAlignment="Center" />
+                <DatePicker Grid.Column="5" x:Name="EndDatePicker" Margin="6,0,10,0" />
+
+                <TextBlock Grid.Column="6" Text="Powod" VerticalAlignment="Center" />
+                <TextBox Grid.Column="7" x:Name="ReasonTextBox" Margin="6,0,10,0" />
+
+                <Button Grid.Column="8" x:Name="CreateButton" Content="Zloz" Click="CreateButton_Click" />
+            </Grid>
+        </Border>
+
+        <DataGrid Grid.Row="3"
+                  x:Name="MineGrid"
+                  AutoGenerateColumns="False"
+                  CanUserAddRows="False"
+                  SelectionMode="Single"
+                  IsReadOnly="True"
+                  Margin="0,0,0,10">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="ID" Binding="{Binding Id}" Width="65" />
+                <DataGridTextColumn Header="Typ" Binding="{Binding LeaveType}" Width="120" />
+                <DataGridTextColumn Header="Od" Binding="{Binding StartDate}" Width="120" />
+                <DataGridTextColumn Header="Do" Binding="{Binding EndDate}" Width="120" />
+                <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="120" />
+                <DataGridTextColumn Header="Komentarz szefa" Binding="{Binding ManagerComment}" Width="220" />
+                <DataGridTextColumn Header="Powod" Binding="{Binding Reason}" Width="*" />
+            </DataGrid.Columns>
+        </DataGrid>
+
+        <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Left">
+            <Button x:Name="RefreshButton" Content="Odswiez" Width="120" Click="RefreshButton_Click" />
+            <TextBlock x:Name="StatusTextBlock" Margin="16,8,0,0" Foreground="#444" />
+        </StackPanel>
+    </Grid>
+</Window>

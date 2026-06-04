@@ -179,3 +179,18 @@ public sealed class UpdateMailSettingsRequest
     [JsonPropertyName("imapPass")]
     public string? ImapPass { get; set; }
 }
+
+public sealed class CreateLeaveRequestRequest
+{
+    [JsonPropertyName("leaveType")]
+    public string LeaveType { get; set; } = "ANNUAL";
+
+    [JsonPropertyName("startDate")]
+    public string StartDate { get; set; } = string.Empty;
+
+    [JsonPropertyName("endDate")]
+    public string EndDate { get; set; } = string.Empty;
+
+    [JsonPropertyName("reason")]
+    public string? Reason { get; set; }
+}
