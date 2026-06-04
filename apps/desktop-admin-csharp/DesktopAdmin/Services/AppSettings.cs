@@ -6,8 +6,7 @@ namespace DesktopAdmin.Services;
 public sealed class AppSettings
 {
     private static readonly string SettingsPath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "UrlopyCamino",
+        AppContext.BaseDirectory,
         "settings.json");
 
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -60,7 +59,6 @@ public sealed class AppSettings
     {
         try
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(SettingsPath)!);
             File.WriteAllText(SettingsPath, JsonSerializer.Serialize(this, JsonOptions));
         }
         catch
