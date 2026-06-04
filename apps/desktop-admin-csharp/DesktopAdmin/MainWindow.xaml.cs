@@ -1,0 +1,331 @@
+﻿using DesktopAdmin.Models;
+using DesktopAdmin.Services;
+using System.Windows;
+using System.Windows.Controls;
+
+namespace DesktopAdmin;
+
+/// <summary>
+/// Interaction logic for MainWindow.xaml
+/// </summary>
+public partial class MainWindow : Window
+{
+    private const string DefaultApiUrl = "https://urlopy-api-svvhqvitka-lm.a.run.app";
+
+    private ApiClient _apiClient;
+    private LoginResponse? _session;
+
+    public MainWindow()
+    {
+        InitializeComponent();
+        _apiClient = new ApiClient(DefaultApiUrl);
+
+        ApiUrlTextBox.Text = DefaultApiUrl;
+        EmailTextBox.Text = "serwis@kotlycamino.pl";
+        PasswordBox.Password = "Camino2023?";
+
+        NewUserRoleCombo.ItemsSource = new[] { "ADMIN", "MANAGER", "EMPLOYEE" };
+        NewUserRoleCombo.SelectedIndex = 2;
+
+        UpdateRoleCombo.ItemsSource = new[] { "ADMIN", "MANAGER", "EMPLOYEE" };
+        UpdateRoleCombo.SelectedIndex = 2;
+
+        CommunicationModeCombo.ItemsSource = new[] { "MULTI", "EMAIL_ONLY" };
+        CommunicationModeCombo.SelectedIndex = 0;
+    }
+
+    private void SetStatus(string message)
+    {
+        StatusTextBlock.Text = message;
+    }
+
+    private bool IsAdminOrManager()
+    {
+        return _session?.User.Role is "ADMIN" or "MANAGER";
+    }
+
+    private async Task RunBusyAsync(Func<Task> work)
+    {
+        try
+        {
+            IsEnabled = false;
+            await work();
+        }
+        catch (Exception ex)
+        {
+            SetStatus($"Blad: {ex.Message}");
+            MessageBox.Show(ex.Message, "Blad", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        finally
+        {
+            IsEnabled = true;
+        }
+    }
+
+    private async Task LoadAdminDataAsync()
+    {
+        var pending = await _apiClient.GetPendingAsync();
+        PendingGrid.ItemsSource = pending;
+
+        var users = await _apiClient.GetUsersAsync();
+        UsersGrid.ItemsSource = users;
+
+        var mail = await _apiClient.GetMailSettingsAsync();
+        SmtpHostTextBox.Text = mail.SmtpHost;
+        SmtpPortTextBox.Text = mail.SmtpPort.ToString();
+        SmtpUserTextBox.Text = mail.SmtpUser;
+        SmtpFromTextBox.Text = mail.SmtpFrom;
+        ImapHostTextBox.Text = mail.ImapHost;
+        ImapPortTextBox.Text = mail.ImapPort.ToString();
+        ImapUserTextBox.Text = mail.ImapUser;
+        ImapSecureCheck.IsChecked = mail.ImapSecure;
+        CommunicationModeCombo.SelectedItem = mail.CommunicationMode;
+
+        SetStatus("Dane administratora zaladowane.");
+    }
+
+    private LeaveRequest? GetSelectedLeaveRequest()
+    {
+        return PendingGrid.SelectedItem as LeaveRequest;
+    }
+
+    private UserSummary? GetSelectedUser()
+    {
+        return UsersGrid.SelectedItem as UserSummary;
+    }
+
+    private async Task DecideAsync(string decision)
+    {
+        var request = GetSelectedLeaveRequest();
+        if (request is null)
+        {
+            MessageBox.Show("Wybierz wniosek z listy.", "Brak wyboru", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var comment = DecisionCommentTextBox.Text.Trim();
+        await _apiClient.DecideAsync(request.Id, decision, string.IsNullOrWhiteSpace(comment) ? null : comment);
+        await LoadAdminDataAsync();
+        SetStatus($"Wniosek #{request.Id} -> {decision}");
+    }
+
+    private void ApplyApiButton_Click(object sender, RoutedEventArgs e)
+    {
+        var url = ApiUrlTextBox.Text.Trim();
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            MessageBox.Show("Podaj API URL.", "Brak URL", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        _apiClient = new ApiClient(url);
+        MainTabs.IsEnabled = false;
+        CurrentUserTextBlock.Text = string.Empty;
+        _session = null;
+        SetStatus($"Ustawiono API: {url}");
+    }
+
+    private async void LoginButton_Click(object sender, RoutedEventArgs e)
+    {
+        await RunBusyAsync(async () =>
+        {
+            var email = EmailTextBox.Text.Trim();
+            var password = PasswordBox.Password;
+
+            if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(password))
+            {
+                throw new InvalidOperationException("Email i haslo sa wymagane.");
+            }
+
+            var session = await _apiClient.LoginAsync(email, password);
+            _session = session;
+
+            CurrentUserTextBlock.Text = $"Zalogowano: {session.User.Name} ({session.User.Role})";
+
+            if (!IsAdminOrManager())
+            {
+                MainTabs.IsEnabled = false;
+                throw new InvalidOperationException("Ten panel jest przeznaczony dla ADMIN / MANAGER.");
+            }
+
+            MainTabs.IsEnabled = true;
+            await LoadAdminDataAsync();
+        });
+    }
+
+    private async void RefreshPendingButton_Click(object sender, RoutedEventArgs e)
+    {
+        await RunBusyAsync(async () =>
+        {
+            PendingGrid.ItemsSource = await _apiClient.GetPendingAsync();
+            SetStatus("Odswiezono liste oczekujacych.");
+        });
+    }
+
+    private async void ApproveButton_Click(object sender, RoutedEventArgs e)
+    {
+        await RunBusyAsync(() => DecideAsync("APPROVED"));
+    }
+
+    private async void RejectButton_Click(object sender, RoutedEventArgs e)
+    {
+        await RunBusyAsync(() => DecideAsync("REJECTED"));
+    }
+
+    private async void RefreshUsersButton_Click(object sender, RoutedEventArgs e)
+    {
+        await RunBusyAsync(async () =>
+        {
+            UsersGrid.ItemsSource = await _apiClient.GetUsersAsync();
+            SetStatus("Odswiezono liste uzytkownikow.");
+        });
+    }
+
+    private async void CreateUserButton_Click(object sender, RoutedEventArgs e)
+    {
+        await RunBusyAsync(async () =>
+        {
+            var name = NewUserNameTextBox.Text.Trim();
+            var email = NewUserEmailTextBox.Text.Trim();
+            var password = NewUserPasswordTextBox.Text;
+            var role = (NewUserRoleCombo.SelectedItem as string) ?? "EMPLOYEE";
+            int? managerId = null;
+
+            if (!string.IsNullOrWhiteSpace(NewUserManagerIdTextBox.Text))
+            {
+                if (!int.TryParse(NewUserManagerIdTextBox.Text.Trim(), out var parsed))
+                {
+                    throw new InvalidOperationException("Manager ID musi byc liczba.");
+                }
+                managerId = parsed;
+            }
+
+            if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(password))
+            {
+                throw new InvalidOperationException("Imie, email i haslo sa wymagane.");
+            }
+
+            await _apiClient.CreateUserAsync(new CreateUserRequest
+            {
+                Name = name,
+                Email = email,
+                Password = password,
+                Role = role,
+                ManagerId = managerId,
+            });
+
+            UsersGrid.ItemsSource = await _apiClient.GetUsersAsync();
+            NewUserNameTextBox.Clear();
+            NewUserEmailTextBox.Clear();
+            NewUserPasswordTextBox.Clear();
+            NewUserManagerIdTextBox.Clear();
+            NewUserRoleCombo.SelectedIndex = 2;
+            SetStatus($"Dodano uzytkownika: {email}");
+        });
+    }
+
+    private async void UpdateRoleButton_Click(object sender, RoutedEventArgs e)
+    {
+        await RunBusyAsync(async () =>
+        {
+            var selected = GetSelectedUser();
+            if (selected is null)
+            {
+                throw new InvalidOperationException("Wybierz uzytkownika do zmiany roli.");
+            }
+
+            var role = (UpdateRoleCombo.SelectedItem as string) ?? "EMPLOYEE";
+            int? managerId = null;
+            var managerRaw = UpdateRoleManagerIdTextBox.Text.Trim();
+
+            if (!string.IsNullOrWhiteSpace(managerRaw))
+            {
+                if (!int.TryParse(managerRaw, out var parsed))
+                {
+                    throw new InvalidOperationException("Manager ID musi byc liczba.");
+                }
+                managerId = parsed;
+            }
+
+            await _apiClient.UpdateUserRoleAsync(selected.Id, new UpdateRoleRequest
+            {
+                Role = role,
+                ManagerId = managerId,
+            });
+
+            UsersGrid.ItemsSource = await _apiClient.GetUsersAsync();
+            SetStatus($"Zmieniono role uzytkownika #{selected.Id}.");
+        });
+    }
+
+    private async void RefreshMailButton_Click(object sender, RoutedEventArgs e)
+    {
+        await RunBusyAsync(async () =>
+        {
+            var mail = await _apiClient.GetMailSettingsAsync();
+            SmtpHostTextBox.Text = mail.SmtpHost;
+            SmtpPortTextBox.Text = mail.SmtpPort.ToString();
+            SmtpUserTextBox.Text = mail.SmtpUser;
+            SmtpFromTextBox.Text = mail.SmtpFrom;
+            ImapHostTextBox.Text = mail.ImapHost;
+            ImapPortTextBox.Text = mail.ImapPort.ToString();
+            ImapUserTextBox.Text = mail.ImapUser;
+            ImapSecureCheck.IsChecked = mail.ImapSecure;
+            CommunicationModeCombo.SelectedItem = mail.CommunicationMode;
+            SetStatus("Odswiezono ustawienia mail.");
+        });
+    }
+
+    private async void SaveMailButton_Click(object sender, RoutedEventArgs e)
+    {
+        await RunBusyAsync(async () =>
+        {
+            if (!int.TryParse(SmtpPortTextBox.Text.Trim(), out var smtpPort))
+            {
+                throw new InvalidOperationException("SMTP port musi byc liczba.");
+            }
+
+            if (!int.TryParse(ImapPortTextBox.Text.Trim(), out var imapPort))
+            {
+                throw new InvalidOperationException("IMAP port musi byc liczba.");
+            }
+
+            var request = new UpdateMailSettingsRequest
+            {
+                SmtpHost = SmtpHostTextBox.Text.Trim(),
+                SmtpPort = smtpPort,
+                SmtpUser = SmtpUserTextBox.Text.Trim(),
+                SmtpFrom = SmtpFromTextBox.Text.Trim(),
+                ImapHost = ImapHostTextBox.Text.Trim(),
+                ImapPort = imapPort,
+                ImapUser = ImapUserTextBox.Text.Trim(),
+                ImapSecure = ImapSecureCheck.IsChecked == true,
+                CommunicationMode = (CommunicationModeCombo.SelectedItem as string) ?? "MULTI",
+                SmtpPass = string.IsNullOrWhiteSpace(SmtpPassBox.Password) ? null : SmtpPassBox.Password,
+                ImapPass = string.IsNullOrWhiteSpace(ImapPassBox.Password) ? null : ImapPassBox.Password,
+            };
+
+            await _apiClient.UpdateMailSettingsAsync(request);
+            SmtpPassBox.Clear();
+            ImapPassBox.Clear();
+            SetStatus("Zapisano ustawienia mail.");
+        });
+    }
+
+    private void PendingGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (GetSelectedLeaveRequest() is { } selected)
+        {
+            DecisionCommentTextBox.Text = selected.ManagerComment ?? string.Empty;
+        }
+    }
+
+    private void UsersGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (GetSelectedUser() is { } selected)
+        {
+            UpdateRoleCombo.SelectedItem = selected.Role;
+            UpdateRoleManagerIdTextBox.Text = selected.ManagerId?.ToString() ?? string.Empty;
+        }
+    }
+}

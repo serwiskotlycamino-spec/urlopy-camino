@@ -1,0 +1,181 @@
+using System.Text.Json.Serialization;
+
+namespace DesktopAdmin.Models;
+
+public sealed class LoginResponse
+{
+    [JsonPropertyName("accessToken")]
+    public string AccessToken { get; set; } = string.Empty;
+
+    [JsonPropertyName("refreshToken")]
+    public string RefreshToken { get; set; } = string.Empty;
+
+    [JsonPropertyName("user")]
+    public UserSummary User { get; set; } = new();
+}
+
+public sealed class RefreshResponse
+{
+    [JsonPropertyName("accessToken")]
+    public string AccessToken { get; set; } = string.Empty;
+
+    [JsonPropertyName("refreshToken")]
+    public string RefreshToken { get; set; } = string.Empty;
+}
+
+public sealed class UserSummary
+{
+    [JsonPropertyName("id")]
+    public int Id { get; set; }
+
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = string.Empty;
+
+    [JsonPropertyName("email")]
+    public string Email { get; set; } = string.Empty;
+
+    [JsonPropertyName("role")]
+    public string Role { get; set; } = string.Empty;
+
+    [JsonPropertyName("managerId")]
+    public int? ManagerId { get; set; }
+
+    [JsonPropertyName("manager_id")]
+    public int? ManagerIdLegacy
+    {
+        get => ManagerId;
+        set => ManagerId = value;
+    }
+}
+
+public sealed class LeaveRequest
+{
+    [JsonPropertyName("id")]
+    public int Id { get; set; }
+
+    [JsonPropertyName("user_id")]
+    public int UserId { get; set; }
+
+    [JsonPropertyName("manager_id")]
+    public int? ManagerId { get; set; }
+
+    [JsonPropertyName("leave_type")]
+    public string LeaveType { get; set; } = string.Empty;
+
+    [JsonPropertyName("start_date")]
+    public string StartDate { get; set; } = string.Empty;
+
+    [JsonPropertyName("end_date")]
+    public string EndDate { get; set; } = string.Empty;
+
+    [JsonPropertyName("reason")]
+    public string? Reason { get; set; }
+
+    [JsonPropertyName("status")]
+    public string Status { get; set; } = string.Empty;
+
+    [JsonPropertyName("manager_comment")]
+    public string? ManagerComment { get; set; }
+
+    [JsonPropertyName("created_at")]
+    public string CreatedAt { get; set; } = string.Empty;
+}
+
+public sealed class MailSettings
+{
+    [JsonPropertyName("smtpHost")]
+    public string SmtpHost { get; set; } = string.Empty;
+
+    [JsonPropertyName("smtpPort")]
+    public int SmtpPort { get; set; }
+
+    [JsonPropertyName("smtpUser")]
+    public string SmtpUser { get; set; } = string.Empty;
+
+    [JsonPropertyName("smtpFrom")]
+    public string SmtpFrom { get; set; } = string.Empty;
+
+    [JsonPropertyName("imapHost")]
+    public string ImapHost { get; set; } = string.Empty;
+
+    [JsonPropertyName("imapPort")]
+    public int ImapPort { get; set; }
+
+    [JsonPropertyName("imapUser")]
+    public string ImapUser { get; set; } = string.Empty;
+
+    [JsonPropertyName("imapSecure")]
+    public bool ImapSecure { get; set; }
+
+    [JsonPropertyName("communicationMode")]
+    public string CommunicationMode { get; set; } = "MULTI";
+
+    [JsonPropertyName("smtpPassConfigured")]
+    public bool SmtpPassConfigured { get; set; }
+
+    [JsonPropertyName("imapPassConfigured")]
+    public bool ImapPassConfigured { get; set; }
+}
+
+public sealed class CreateUserRequest
+{
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = string.Empty;
+
+    [JsonPropertyName("email")]
+    public string Email { get; set; } = string.Empty;
+
+    [JsonPropertyName("password")]
+    public string Password { get; set; } = string.Empty;
+
+    [JsonPropertyName("role")]
+    public string Role { get; set; } = "EMPLOYEE";
+
+    [JsonPropertyName("managerId")]
+    public int? ManagerId { get; set; }
+}
+
+public sealed class UpdateRoleRequest
+{
+    [JsonPropertyName("role")]
+    public string Role { get; set; } = "EMPLOYEE";
+
+    [JsonPropertyName("managerId")]
+    public int? ManagerId { get; set; }
+}
+
+public sealed class UpdateMailSettingsRequest
+{
+    [JsonPropertyName("smtpHost")]
+    public string SmtpHost { get; set; } = string.Empty;
+
+    [JsonPropertyName("smtpPort")]
+    public int SmtpPort { get; set; }
+
+    [JsonPropertyName("smtpUser")]
+    public string SmtpUser { get; set; } = string.Empty;
+
+    [JsonPropertyName("smtpFrom")]
+    public string SmtpFrom { get; set; } = string.Empty;
+
+    [JsonPropertyName("imapHost")]
+    public string ImapHost { get; set; } = string.Empty;
+
+    [JsonPropertyName("imapPort")]
+    public int ImapPort { get; set; }
+
+    [JsonPropertyName("imapUser")]
+    public string ImapUser { get; set; } = string.Empty;
+
+    [JsonPropertyName("imapSecure")]
+    public bool ImapSecure { get; set; }
+
+    [JsonPropertyName("communicationMode")]
+    public string CommunicationMode { get; set; } = "MULTI";
+
+    [JsonPropertyName("smtpPass")]
+    public string? SmtpPass { get; set; }
+
+    [JsonPropertyName("imapPass")]
+    public string? ImapPass { get; set; }
+}
