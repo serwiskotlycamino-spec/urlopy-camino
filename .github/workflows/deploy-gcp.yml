@@ -21,11 +21,21 @@ jobs:
         run: |
           set -euo pipefail
 
+          sanitize() {
+            printf '%s' "$1" | tr -d '\r\n' | sed 's/[[:space:]]*$//'
+          }
+
           PROJECT_ID="${{ vars.GCP_PROJECT_ID }}"
           REGION="${{ vars.GCP_REGION }}"
           REPOSITORY="${{ vars.GCP_ARTIFACT_REPOSITORY }}"
           API_SERVICE="${{ vars.GCP_CLOUD_RUN_API_SERVICE }}"
           WEB_SERVICE="${{ vars.GCP_CLOUD_RUN_WEB_SERVICE }}"
+
+          PROJECT_ID="$(sanitize "$PROJECT_ID")"
+          REGION="$(sanitize "$REGION")"
+          REPOSITORY="$(sanitize "$REPOSITORY")"
+          API_SERVICE="$(sanitize "$API_SERVICE")"
+          WEB_SERVICE="$(sanitize "$WEB_SERVICE")"
 
           PROJECT_ID="${PROJECT_ID:-urlopy-camino}"
           REGION="${REGION:-europe-central2}"
