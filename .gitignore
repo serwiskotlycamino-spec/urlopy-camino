@@ -9,3 +9,12 @@ dist/
 .next/
 .expo/
 .DS_Store
+
+# Local build artifacts
+tmp/
+apps/mobile-worker/build-log-*.txt
+apps/mobile-worker/build-view*.json
+apps/mobile-worker/expo-config.json
+
+# Local Android SDK platform-tools copied for manual testing
+tools/platform-tools/
