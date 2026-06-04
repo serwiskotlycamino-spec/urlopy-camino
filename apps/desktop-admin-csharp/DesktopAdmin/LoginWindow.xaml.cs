@@ -14,7 +14,7 @@ public partial class LoginWindow : Window
 
         ApiUrlTextBox.Text = _settings.ApiUrl;
         EmailTextBox.Text = _settings.LastEmail;
-        PasswordBox.Password = "Camino2023?";
+        PasswordBox.Password = "12345678";
     }
 
     private async void LoginButton_Click(object sender, RoutedEventArgs e)
