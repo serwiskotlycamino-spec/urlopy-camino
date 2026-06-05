@@ -145,7 +145,11 @@ jobs:
 
       - name: Deploy API service
         run: |
-          DATABASE_URL='${{ secrets.DATABASE_URL }}'
+          cat > api-env.yaml <<EOF
+          DATABASE_URL: "${{ secrets.DATABASE_URL }}"
+          CORS_ORIGINS: "${CORS_ORIGINS}"
+          EOF
+
           gcloud run deploy "$API_SERVICE" \
             --image "$API_IMAGE" \
             --region "$REGION" \
@@ -153,7 +157,7 @@ jobs:
             --allow-unauthenticated \
             --port 8080 \
             --add-cloudsql-instances "$SQL_INSTANCE" \
-            --set-env-vars "^@^DATABASE_URL=$DATABASE_URL@CORS_ORIGINS=$CORS_ORIGINS"
+            --env-vars-file api-env.yaml
 
       - name: Deploy Web service
         run: |
