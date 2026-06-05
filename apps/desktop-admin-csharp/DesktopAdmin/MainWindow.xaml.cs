@@ -323,7 +323,57 @@ public partial class MainWindow : Window
         if (GetSelectedUser() is { } selected)
         {
             UpdateRoleCombo.SelectedItem = selected.Role;
+            EditUserNameTextBox.Text = selected.Name;
+            EditUserEmailTextBox.Text = selected.Email;
+            EditUserPasswordTextBox.Text = string.Empty; // Hasła nie odczytujemy
         }
+        else
+        {
+            EditUserNameTextBox.Text = string.Empty;
+            EditUserEmailTextBox.Text = string.Empty;
+            EditUserPasswordTextBox.Text = string.Empty;
+        }
+    }
+
+    private async void UpdateUserButton_Click(object sender, RoutedEventArgs e)
+    {
+        await RunBusyAsync(async () =>
+        {
+            var selectedUser = GetSelectedUser();
+            if (selectedUser is null)
+            {
+                MessageBox.Show("Wybierz użytkownika do edycji z tabeli powyżej.", "Brak wyboru", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            var request = new UpdateUserSettingsRequest();
+            
+            if (!string.IsNullOrWhiteSpace(EditUserNameTextBox.Text) && EditUserNameTextBox.Text.Trim() != selectedUser.Name)
+            {
+                request.Name = EditUserNameTextBox.Text.Trim();
+            }
+
+            if (!string.IsNullOrWhiteSpace(EditUserEmailTextBox.Text) && EditUserEmailTextBox.Text.Trim() != selectedUser.Email)
+            {
+                request.Email = EditUserEmailTextBox.Text.Trim();
+            }
+
+            if (!string.IsNullOrWhiteSpace(EditUserPasswordTextBox.Text))
+            {
+                request.Password = EditUserPasswordTextBox.Text;
+            }
+
+            if (request.Name == null && request.Email == null && request.Password == null)
+            {
+                SetStatus("Brak zmian do zapisania.");
+                return;
+            }
+
+            await _apiClient.UpdateUserSettingsAsync(selectedUser.Id, request);
+            UsersGrid.ItemsSource = await _apiClient.GetUsersAsync();
+            EditUserPasswordTextBox.Text = string.Empty;
+            SetStatus($"Zaktualizowano dane użytkownika #{selectedUser.Id}.");
+        });
     }
 
     private async void LogoutButton_Click(object sender, RoutedEventArgs e)
@@ -339,6 +389,11 @@ public partial class MainWindow : Window
                 // Allow local logout even if API session is already invalid.
             }
 
+            var settings = AppSettings.Load();
+            settings.RememberMe = false;
+            settings.SavedSession = null;
+            settings.Save();
+
             var loginWindow = new LoginWindow();
             loginWindow.Show();
             Close();
@@ -348,5 +403,30 @@ public partial class MainWindow : Window
     private void CloseButton_Click(object sender, RoutedEventArgs e)
     {
         Close();
+    }
+
+    private async void DeleteUserButton_Click(object sender, RoutedEventArgs e)
+    {
+        await RunBusyAsync(async () =>
+        {
+            var selectedUser = GetSelectedUser();
+            if (selectedUser is null)
+            {
+                MessageBox.Show("Wybierz użytkownika do usunięcia.", "Brak wyboru", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            var result = MessageBox.Show($"Czy na pewno chcesz usunąć użytkownika {selectedUser.Name} ({selectedUser.Email})?",
+                                         "Potwierdź usunięcie",
+                                         MessageBoxButton.YesNo,
+                                         MessageBoxImage.Warning);
+
+            if (result == MessageBoxResult.Yes)
+            {
+                await _apiClient.DeleteUserAsync(selectedUser.Id);
+                UsersGrid.ItemsSource = await _apiClient.GetUsersAsync();
+                SetStatus($"Usunięto użytkownika: {selectedUser.Email}");
+            }
+        });
     }
 }

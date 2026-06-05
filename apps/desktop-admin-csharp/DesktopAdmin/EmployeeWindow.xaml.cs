@@ -102,6 +102,11 @@ public partial class EmployeeWindow : Window
                 // Allow local logout even if API session is already invalid.
             }
 
+            var settings = AppSettings.Load();
+            settings.RememberMe = false;
+            settings.SavedSession = null;
+            settings.Save();
+
             var loginWindow = new LoginWindow();
             loginWindow.Show();
             Close();

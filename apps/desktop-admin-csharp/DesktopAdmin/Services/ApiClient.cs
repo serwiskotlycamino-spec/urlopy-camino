@@ -57,11 +57,17 @@ public sealed class ApiClient
 
     public Task<List<UserSummary>> GetUsersAsync() => SendAsync<List<UserSummary>>(HttpMethod.Get, "auth/users");
 
+    public Task<List<UserSummary>> GetLoginListAsync() =>
+        SendAsync<List<UserSummary>>(HttpMethod.Get, "auth/login-list", useAuth: false);
+
     public Task<UserSummary> CreateUserAsync(CreateUserRequest request) =>
         SendAsync<UserSummary>(HttpMethod.Post, "auth/users", request);
 
     public Task<UserSummary> UpdateUserRoleAsync(int userId, UpdateRoleRequest request) =>
         SendAsync<UserSummary>(HttpMethod.Patch, $"auth/users/{userId}/role", request);
+
+    public Task<UserSummary> UpdateUserSettingsAsync(int userId, UpdateUserSettingsRequest request) =>
+        SendAsync<UserSummary>(HttpMethod.Patch, $"auth/users/{userId}", request);
 
     public Task<MailSettings> GetMailSettingsAsync() => SendAsync<MailSettings>(HttpMethod.Get, "auth/mail-settings");
 
@@ -84,6 +90,9 @@ public sealed class ApiClient
 
     public Task<EmployeeLeaveSummary> SetLeaveLimitAsync(int userId, SetLeaveLimitRequest request) =>
         SendAsync<EmployeeLeaveSummary>(HttpMethod.Put, $"leave-limits/{userId}", request);
+
+    public Task DeleteUserAsync(int userId) =>
+        SendAsync<object>(HttpMethod.Delete, $"auth/users/{userId}");
 
     private async Task<T> SendAsync<T>(HttpMethod method, string path, object? body = null, bool useAuth = true)
     {
@@ -154,6 +163,12 @@ public sealed class ApiClient
         _accessToken = parsed.AccessToken;
         _refreshToken = parsed.RefreshToken;
         return true;
+    }
+
+    public void RestoreSession(LoginResponse session)
+    {
+        _accessToken = session.AccessToken;
+        _refreshToken = session.RefreshToken;
     }
 
     private static string ExtractApiMessage(HttpStatusCode statusCode, string responseText)

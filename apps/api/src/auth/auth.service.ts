@@ -251,6 +251,52 @@ export class AuthService {
     return this.mapUserSummary(updated);
   }
 
+  async deleteUser(actor: AuthUser, userId: number) {
+    if (actor.role !== 'ADMIN') {
+      throw new ForbiddenException('Brak uprawnien do usuwania uzytkownika.');
+    }
+
+    const target = await this.db.get<UserSummary>('SELECT id, name, email, role, manager_id FROM users WHERE id = $1', [
+      userId,
+    ]);
+
+    if (!target) {
+      throw new BadRequestException('Nie znaleziono wskazanego uzytkownika.');
+    }
+
+    if (target.id === actor.id) {
+      throw new BadRequestException('Nie mozna usunac aktualnie zalogowanego administratora.');
+    }
+
+    if (target.role === 'ADMIN') {
+      const admins = await this.db.get<{ count: string }>("SELECT COUNT(*) as count FROM users WHERE role = 'ADMIN'");
+      if (Number(admins?.count ?? '0') <= 1) {
+        throw new BadRequestException('Nie mozna usunac ostatniego administratora.');
+      }
+    }
+
+    const hasRequests = await this.db.get<{ count: string }>('SELECT COUNT(*) as count FROM leave_requests WHERE user_id = $1', [
+      userId,
+    ]);
+    if (Number(hasRequests?.count ?? '0') > 0) {
+      throw new BadRequestException('Uzytkownik ma wnioski urlopowe. Najpierw je rozlicz lub zarchiwizuj konto.');
+    }
+
+    const hasTrips = await this.db.get<{ count: string }>('SELECT COUNT(*) as count FROM work_trips WHERE user_id = $1', [
+      userId,
+    ]);
+    if (Number(hasTrips?.count ?? '0') > 0) {
+      throw new BadRequestException('Uzytkownik ma zapisane godziny wyjazdowe. Najpierw je usun.');
+    }
+
+    await this.db.run('DELETE FROM refresh_tokens WHERE user_id = $1', [userId]);
+    await this.db.run('DELETE FROM notifications WHERE user_id = $1', [userId]);
+    await this.db.run('DELETE FROM leave_limits WHERE user_id = $1', [userId]);
+    await this.db.run('DELETE FROM users WHERE id = $1', [userId]);
+
+    return { ok: true };
+  }
+
   async getMailSettings(): Promise<MailSettings> {
     const settings = await this.getSettingsMap();
     const smtpPass = settings['mail.smtpPass'] ?? process.env.SMTP_PASS ?? '';

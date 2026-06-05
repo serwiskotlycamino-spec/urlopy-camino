@@ -144,6 +144,18 @@ public sealed class UpdateRoleRequest
     public int? ManagerId { get; set; }
 }
 
+public sealed class UpdateUserSettingsRequest
+{
+    [JsonPropertyName("name")]
+    public string? Name { get; set; }
+
+    [JsonPropertyName("email")]
+    public string? Email { get; set; }
+
+    [JsonPropertyName("password")]
+    public string? Password { get; set; }
+}
+
 public sealed class UpdateMailSettingsRequest
 {
     [JsonPropertyName("smtpHost")]

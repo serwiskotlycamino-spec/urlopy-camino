@@ -17,7 +17,11 @@ public sealed class AppSettings
 
     public string ApiUrl { get; set; } = "https://urlopy-api-svvhqvitka-lm.a.run.app";
 
-    public string LastEmail { get; set; } = "serwis@kotlycamino.pl";
+    public string LastEmail { get; set; } = string.Empty;
+
+    public bool RememberMe { get; set; } = false;
+
+    public Models.LoginResponse? SavedSession { get; set; }
 
     // Window geometry per window key
     public Dictionary<string, WindowGeometry> Windows { get; set; } = new();
