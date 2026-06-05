@@ -32,11 +32,11 @@ public partial class MainWindow : Window
         EmailTextBox.Text = "serwis@kotlycamino.pl";
         PasswordBox.Password = "Camino2023?";
 
-        NewUserRoleCombo.ItemsSource = new[] { "ADMIN", "MANAGER", "EMPLOYEE" };
-        NewUserRoleCombo.SelectedIndex = 2;
+        NewUserRoleCombo.ItemsSource = new[] { "ADMIN", "EMPLOYEE" };
+        NewUserRoleCombo.SelectedIndex = 1;
 
-        UpdateRoleCombo.ItemsSource = new[] { "ADMIN", "MANAGER", "EMPLOYEE" };
-        UpdateRoleCombo.SelectedIndex = 2;
+        UpdateRoleCombo.ItemsSource = new[] { "ADMIN", "EMPLOYEE" };
+        UpdateRoleCombo.SelectedIndex = 1;
 
         CommunicationModeCombo.ItemsSource = new[] { "MULTI", "EMAIL_ONLY" };
         CommunicationModeCombo.SelectedIndex = 0;
@@ -61,9 +61,9 @@ public partial class MainWindow : Window
         StatusTextBlock.Text = message;
     }
 
-    private bool IsAdminOrManager()
+    private bool IsAdmin()
     {
-        return _session?.User.Role is "ADMIN" or "MANAGER";
+        return _session?.User.Role is "ADMIN";
     }
 
     private async Task RunBusyAsync(Func<Task> work)
@@ -164,10 +164,10 @@ public partial class MainWindow : Window
 
             CurrentUserTextBlock.Text = $"Zalogowano: {session.User.Name} ({session.User.Role})";
 
-            if (!IsAdminOrManager())
+            if (!IsAdmin())
             {
                 MainTabs.IsEnabled = false;
-                throw new InvalidOperationException("Ten panel jest przeznaczony dla ADMIN / MANAGER.");
+                throw new InvalidOperationException("Ten panel jest przeznaczony tylko dla ADMIN.");
             }
 
             MainTabs.IsEnabled = true;
@@ -211,16 +211,6 @@ public partial class MainWindow : Window
             var email = NewUserEmailTextBox.Text.Trim();
             var password = NewUserPasswordTextBox.Text;
             var role = (NewUserRoleCombo.SelectedItem as string) ?? "EMPLOYEE";
-            int? managerId = null;
-
-            if (!string.IsNullOrWhiteSpace(NewUserManagerIdTextBox.Text))
-            {
-                if (!int.TryParse(NewUserManagerIdTextBox.Text.Trim(), out var parsed))
-                {
-                    throw new InvalidOperationException("Manager ID musi byc liczba.");
-                }
-                managerId = parsed;
-            }
 
             if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(password))
             {
@@ -233,15 +223,13 @@ public partial class MainWindow : Window
                 Email = email,
                 Password = password,
                 Role = role,
-                ManagerId = managerId,
             });
 
             UsersGrid.ItemsSource = await _apiClient.GetUsersAsync();
             NewUserNameTextBox.Clear();
             NewUserEmailTextBox.Clear();
             NewUserPasswordTextBox.Clear();
-            NewUserManagerIdTextBox.Clear();
-            NewUserRoleCombo.SelectedIndex = 2;
+            NewUserRoleCombo.SelectedIndex = 1;
             SetStatus($"Dodano uzytkownika: {email}");
         });
     }
@@ -257,22 +245,10 @@ public partial class MainWindow : Window
             }
 
             var role = (UpdateRoleCombo.SelectedItem as string) ?? "EMPLOYEE";
-            int? managerId = null;
-            var managerRaw = UpdateRoleManagerIdTextBox.Text.Trim();
-
-            if (!string.IsNullOrWhiteSpace(managerRaw))
-            {
-                if (!int.TryParse(managerRaw, out var parsed))
-                {
-                    throw new InvalidOperationException("Manager ID musi byc liczba.");
-                }
-                managerId = parsed;
-            }
 
             await _apiClient.UpdateUserRoleAsync(selected.Id, new UpdateRoleRequest
             {
                 Role = role,
-                ManagerId = managerId,
             });
 
             UsersGrid.ItemsSource = await _apiClient.GetUsersAsync();
@@ -347,7 +323,6 @@ public partial class MainWindow : Window
         if (GetSelectedUser() is { } selected)
         {
             UpdateRoleCombo.SelectedItem = selected.Role;
-            UpdateRoleManagerIdTextBox.Text = selected.ManagerId?.ToString() ?? string.Empty;
         }
     }
 

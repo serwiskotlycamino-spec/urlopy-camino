@@ -14,7 +14,7 @@ type DbUser = {
   name: string;
   email: string;
   password: string;
-  role: 'ADMIN' | 'MANAGER' | 'EMPLOYEE';
+  role: 'ADMIN' | 'EMPLOYEE';
   manager_id: number | null;
 };
 
@@ -29,7 +29,7 @@ type UserSummary = {
   id: number;
   name: string;
   email: string;
-  role: 'ADMIN' | 'MANAGER' | 'EMPLOYEE';
+  role: 'ADMIN' | 'EMPLOYEE';
   manager_id: number | null;
 };
 
@@ -58,6 +58,12 @@ export class AuthService {
     private readonly db: DatabaseService,
     private readonly jwt: JwtService,
   ) {}
+
+  getLoginList() {
+    return this.db.all<{ id: number; name: string; email: string; role: string }>(
+      'SELECT id, name, email, role FROM users ORDER BY name',
+    );
+  }
 
   async login(email: string, password: string) {
     const user = await this.db.get<DbUser>('SELECT * FROM users WHERE email = $1', [email]);
@@ -200,11 +206,8 @@ export class AuthService {
       throw new BadRequestException('Nie znaleziono wskazanego uzytkownika.');
     }
 
-    if (actor.role === 'MANAGER') {
-      const canEdit = target.role === 'EMPLOYEE' && target.manager_id === actor.id;
-      if (!canEdit) {
-        throw new ForbiddenException('Kierownik moze edytowac tylko swoich pracownikow.');
-      }
+    if (actor.role !== 'ADMIN') {
+      throw new ForbiddenException('Brak uprawnien do edycji uzytkownika.');
     }
 
     const nextName = input.name?.trim() || target.name;
@@ -219,23 +222,9 @@ export class AuthService {
 
     let nextManagerId = target.manager_id;
     if (target.role === 'EMPLOYEE' && input.managerId !== undefined) {
-      if (actor.role === 'MANAGER' && input.managerId !== actor.id) {
-        throw new ForbiddenException('Kierownik moze przypisac pracownika tylko do siebie.');
-      }
-
-      const manager = await this.db.get<UserSummary>(
-        'SELECT id, name, email, role, manager_id FROM users WHERE id = $1',
-        [input.managerId],
-      );
-
-      if (!manager || (manager.role !== 'MANAGER' && manager.role !== 'ADMIN')) {
-        throw new BadRequestException('Wskazany kierownik nie istnieje lub ma nieprawidlowa role.');
-      }
-
-      nextManagerId = input.managerId;
+      nextManagerId = input.managerId ?? null;
     }
-
-    if (target.role !== 'EMPLOYEE') {
+    if (target.role === 'ADMIN') {
       nextManagerId = null;
     }
 
@@ -285,7 +274,7 @@ export class AuthService {
   }
 
   async updateMailSettings(actor: AuthUser, input: UpdateMailSettingsDto) {
-    if (actor.role !== 'ADMIN' && actor.role !== 'MANAGER') {
+    if (actor.role !== 'ADMIN') {
       throw new ForbiddenException('Brak uprawnien do konfiguracji poczty.');
     }
 
@@ -385,45 +374,22 @@ export class AuthService {
     return createHash('sha256').update(token).digest('hex');
   }
 
-  private ensureCanAssignRole(actorRole: AuthUser['role'], targetRole: UserSummary['role']): void {
+  private ensureCanAssignRole(actorRole: AuthUser['role'], _targetRole: UserSummary['role']): void {
     if (actorRole === 'ADMIN') {
       return;
     }
-
-    if (actorRole === 'MANAGER' && targetRole === 'EMPLOYEE') {
-      return;
-    }
-
     throw new ForbiddenException('Brak uprawnien do nadania tej roli.');
   }
 
   private async resolveManagerId(
-    actor: AuthUser,
+    _actor: AuthUser,
     role: UserSummary['role'],
     managerId?: number,
   ): Promise<number | null> {
     if (role !== 'EMPLOYEE') {
       return null;
     }
-
-    const fallbackManagerId = actor.role === 'MANAGER' ? actor.id : undefined;
-    const finalManagerId = managerId ?? fallbackManagerId;
-    if (!finalManagerId) {
-      throw new BadRequestException('Pracownik musi miec przypisanego kierownika.');
-    }
-
-    const manager = await this.db.get<UserSummary>(
-      `SELECT id, name, email, role, manager_id
-       FROM users
-       WHERE id = $1`,
-      [finalManagerId],
-    );
-
-    if (!manager || (manager.role !== 'MANAGER' && manager.role !== 'ADMIN')) {
-      throw new BadRequestException('Przypisany kierownik nie istnieje lub ma zla role.');
-    }
-
-    return finalManagerId;
+    return managerId ?? null;
   }
 
   private mapUserSummary(row: UserSummary) {

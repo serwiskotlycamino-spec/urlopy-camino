@@ -194,3 +194,66 @@ public sealed class CreateLeaveRequestRequest
     [JsonPropertyName("reason")]
     public string? Reason { get; set; }
 }
+
+public sealed class WorkTrip
+{
+    [JsonPropertyName("id")]
+    public int Id { get; set; }
+
+    [JsonPropertyName("user_id")]
+    public int UserId { get; set; }
+
+    [JsonPropertyName("trip_date")]
+    public string TripDate { get; set; } = string.Empty;
+
+    [JsonPropertyName("start_time")]
+    public string StartTime { get; set; } = string.Empty;
+
+    [JsonPropertyName("end_time")]
+    public string EndTime { get; set; } = string.Empty;
+
+    [JsonPropertyName("destination")]
+    public string? Destination { get; set; }
+
+    [JsonPropertyName("description")]
+    public string? Description { get; set; }
+
+    [JsonPropertyName("user_name")]
+    public string? UserName { get; set; }
+
+    [JsonPropertyName("user_email")]
+    public string? UserEmail { get; set; }
+}
+
+public sealed class EmployeeLeaveSummary
+{
+    [JsonPropertyName("userId")]
+    public int UserId { get; set; }
+
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = string.Empty;
+
+    [JsonPropertyName("email")]
+    public string Email { get; set; } = string.Empty;
+
+    [JsonPropertyName("year")]
+    public int Year { get; set; }
+
+    [JsonPropertyName("annualDays")]
+    public int AnnualDays { get; set; }
+
+    [JsonPropertyName("usedDays")]
+    public int UsedDays { get; set; }
+
+    [JsonPropertyName("remainingDays")]
+    public int RemainingDays { get; set; }
+}
+
+public sealed class SetLeaveLimitRequest
+{
+    [JsonPropertyName("annualDays")]
+    public int AnnualDays { get; set; }
+
+    [JsonPropertyName("year")]
+    public int? Year { get; set; }
+}

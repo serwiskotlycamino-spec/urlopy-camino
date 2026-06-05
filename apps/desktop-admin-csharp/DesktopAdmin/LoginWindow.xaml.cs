@@ -47,7 +47,6 @@ public partial class LoginWindow : Window
             Window nextWindow = session.User.Role switch
             {
                 "ADMIN" => new MainWindow(apiClient, session),
-                "MANAGER" => new ManagerWindow(apiClient, session),
                 "EMPLOYEE" => new EmployeeWindow(apiClient, session),
                 _ => throw new InvalidOperationException($"Nieobslugiwana rola: {session.User.Role}"),
             };

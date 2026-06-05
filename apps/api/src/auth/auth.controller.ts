@@ -17,6 +17,12 @@ import { UpdateUserSettingsDto } from './dto/update-user-settings.dto';
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
+  /** Publiczna lista uzytkownikow do pickera na ekranie logowania (brak hasel). */
+  @Get('login-list')
+  getLoginList() {
+    return this.authService.getLoginList();
+  }
+
   @Post('login')
   login(@Body() body: LoginDto) {
     return this.authService.login(body.email, body.password);
@@ -28,14 +34,14 @@ export class AuthController {
   }
 
   @UseGuards(AuthGuard, RolesGuard)
-  @Roles('ADMIN', 'MANAGER')
+  @Roles('ADMIN')
   @Get('users')
   getUsers() {
     return this.authService.getUsers();
   }
 
   @UseGuards(AuthGuard, RolesGuard)
-  @Roles('ADMIN', 'MANAGER')
+  @Roles('ADMIN')
   @Post('users')
   createUser(@CurrentUser() user: AuthUser, @Body() body: CreateUserDto) {
     return this.authService.createUser(user, body);
@@ -49,21 +55,21 @@ export class AuthController {
   }
 
   @UseGuards(AuthGuard, RolesGuard)
-  @Roles('ADMIN', 'MANAGER')
+  @Roles('ADMIN')
   @Patch('users/:id')
   updateUserSettings(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() body: UpdateUserSettingsDto) {
     return this.authService.updateUserSettings(user, Number(id), body);
   }
 
   @UseGuards(AuthGuard, RolesGuard)
-  @Roles('ADMIN', 'MANAGER')
+  @Roles('ADMIN')
   @Get('mail-settings')
   getMailSettings() {
     return this.authService.getMailSettings();
   }
 
   @UseGuards(AuthGuard, RolesGuard)
-  @Roles('ADMIN', 'MANAGER')
+  @Roles('ADMIN')
   @Put('mail-settings')
   updateMailSettings(@CurrentUser() user: AuthUser, @Body() body: UpdateMailSettingsDto) {
     return this.authService.updateMailSettings(user, body);

@@ -154,7 +154,6 @@
                             <DataGridTextColumn Header="Imię" Binding="{Binding Name}" Width="220" />
                             <DataGridTextColumn Header="Email" Binding="{Binding Email}" Width="280" />
                             <DataGridTextColumn Header="Rola" Binding="{Binding Role}" Width="120" />
-                            <DataGridTextColumn Header="Kierownik ID" Binding="{Binding ManagerId}" Width="120" />
                         </DataGrid.Columns>
                     </DataGrid>
 
@@ -169,8 +168,6 @@
                                 <ColumnDefinition Width="150" />
                                 <ColumnDefinition Width="70" />
                                 <ColumnDefinition Width="130" />
-                                <ColumnDefinition Width="90" />
-                                <ColumnDefinition Width="130" />
                             </Grid.ColumnDefinitions>
 
                             <TextBlock Grid.Column="0" Text="Imię" VerticalAlignment="Center" />
@@ -184,9 +181,6 @@
 
                             <TextBlock Grid.Column="6" Text="Rola" VerticalAlignment="Center" />
                             <ComboBox Grid.Column="7" x:Name="NewUserRoleCombo" Margin="6,0,10,0" />
-
-                            <TextBlock Grid.Column="8" Text="Mgr ID" VerticalAlignment="Center" />
-                            <TextBox Grid.Column="9" x:Name="NewUserManagerIdTextBox" Margin="6,0,0,0" />
                         </Grid>
                     </Border>
 
@@ -195,7 +189,6 @@
                         <Button x:Name="CreateUserButton" Content="Dodaj użytkownika" Width="150" Margin="10,0,0,0" Click="CreateUserButton_Click" />
                         <TextBlock Text="Nowa rola dla zaznaczonego:" VerticalAlignment="Center" Margin="20,0,8,0" />
                         <ComboBox x:Name="UpdateRoleCombo" Width="120" />
-                        <TextBox x:Name="UpdateRoleManagerIdTextBox" Width="90" Margin="8,0,0,0" />
                         <Button x:Name="UpdateRoleButton" Content="Zmień rolę" Width="120" Margin="8,0,0,0" Click="UpdateRoleButton_Click" />
                     </StackPanel>
                 </Grid>

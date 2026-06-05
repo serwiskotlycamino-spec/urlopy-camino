@@ -9,6 +9,7 @@
         "buildType": "apk"
       },
       "env": {
+        "EXPO_PUBLIC_API_URL_CLOUD": "https://urlopy-api-svvhqvitka-lm.a.run.app",
         "EXPO_PUBLIC_API_URL": "https://urlopy-api-svvhqvitka-lm.a.run.app"
       }
     },
@@ -16,6 +17,10 @@
       "autoIncrement": true,
       "android": {
         "buildType": "app-bundle"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL_CLOUD": "https://urlopy-api-svvhqvitka-lm.a.run.app",
+        "EXPO_PUBLIC_API_URL": "https://urlopy-api-svvhqvitka-lm.a.run.app"
       }
     }
   }

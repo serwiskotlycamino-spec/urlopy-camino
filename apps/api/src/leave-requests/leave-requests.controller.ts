@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { CreateLeaveRequestDto } from './dto/create-leave-request.dto';
 import { LeaveDecisionDto } from './dto/leave-decision.dto';
 import { LeaveRequestsService } from './leave-requests.service';
@@ -19,19 +19,26 @@ export class LeaveRequestsController {
     return this.leaveRequestsService.create({ ...body, userId: user.id });
   }
 
-  @Roles('EMPLOYEE')
+  @Roles('EMPLOYEE', 'ADMIN')
   @Get('mine')
   getMine(@CurrentUser() user: AuthUser) {
     return this.leaveRequestsService.getMine(user.id);
   }
 
-  @Roles('MANAGER', 'ADMIN')
-  @Get('pending')
-  getPending(@CurrentUser() user: AuthUser) {
-    return this.leaveRequestsService.getPendingForManager(user.id);
+  @Roles('EMPLOYEE')
+  @HttpCode(HttpStatus.OK)
+  @Delete(':id')
+  cancel(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.leaveRequestsService.cancel(Number(id), user.id);
   }
 
-  @Roles('MANAGER', 'ADMIN')
+  @Roles('ADMIN')
+  @Get('pending')
+  getPending(@CurrentUser() user: AuthUser) {
+    return this.leaveRequestsService.getPendingForAdmin(user.id);
+  }
+
+  @Roles('ADMIN')
   @Patch(':id/decision')
   decide(@Param('id') id: string, @CurrentUser() user: AuthUser, @Body() body: LeaveDecisionDto) {
     return this.leaveRequestsService.decide(Number(id), user.id, body.decision, body.comment);

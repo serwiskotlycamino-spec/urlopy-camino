@@ -100,7 +100,32 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
         file_size INTEGER NOT NULL,
         created_at TIMESTAMP NOT NULL DEFAULT NOW()
       );
+
+      CREATE TABLE IF NOT EXISTS work_trips (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        trip_date DATE NOT NULL,
+        start_time TIME NOT NULL,
+        end_time TIME NOT NULL,
+        destination VARCHAR(255),
+        description TEXT,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS leave_limits (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        year INTEGER NOT NULL,
+        annual_days INTEGER NOT NULL DEFAULT 26,
+        updated_by INTEGER,
+        updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        UNIQUE(user_id, year)
+      );
     `);
+
+    // Migracja: usun role MANAGER (zamien na EMPLOYEE).
+    await this.pool.query(`UPDATE users SET role = 'EMPLOYEE' WHERE role = 'MANAGER'`);
   }
 
   private async seedUsers(): Promise<void> {
@@ -109,27 +134,21 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
-    const adminHash = await hash('admin123', 10);
-    const managerHash = await hash('szef123', 10);
-    const employeeHash = await hash('pracownik123', 10);
+    const adminHash = await hash('12345678', 10);
+    const employeeHash = await hash('12345678', 10);
 
     await this.run(
       `
       INSERT INTO users (name, email, password, role, manager_id)
       VALUES
       ($1, $2, $3, $4, NULL),
-      ($5, $6, $7, $8, NULL),
-      ($9, $10, $11, $12, 2)
+      ($5, $6, $7, $8, NULL)
     `,
       [
         'Admin',
         'admin@firma.local',
         adminHash,
         'ADMIN',
-        'Kierownik',
-        'szef@firma.local',
-        managerHash,
-        'MANAGER',
         'Pracownik',
         'pracownik@firma.local',
         employeeHash,

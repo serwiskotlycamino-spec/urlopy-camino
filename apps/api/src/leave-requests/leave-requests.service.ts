@@ -4,7 +4,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 
 type DbUser = {
   id: number;
-  role: 'ADMIN' | 'MANAGER' | 'EMPLOYEE';
+  role: 'ADMIN' | 'EMPLOYEE';
   manager_id: number | null;
 };
 
@@ -68,15 +68,19 @@ export class LeaveRequestsService {
       [input.userId],
     );
 
-    if (user.manager_id) {
+    const reviewers = await this.db.all<Pick<DbUser, 'id'>>(
+      `SELECT id FROM users WHERE role = 'ADMIN'`,
+    );
+
+    for (const reviewer of reviewers) {
       await this.notifications.createInApp(
-        user.manager_id,
+        reviewer.id,
         'leave.request.created',
         'Pojawil sie nowy wniosek urlopowy do akceptacji.',
         { requestId: created?.id, employeeId: input.userId },
       );
       await this.notifications.createEmailFallback(
-        user.manager_id,
+        reviewer.id,
         'leave.request.created',
         'Nowy wniosek urlopowy oczekuje na decyzje.',
         { requestId: created?.id, employeeId: input.userId },
@@ -93,17 +97,26 @@ export class LeaveRequestsService {
     );
   }
 
-  async getPendingForManager(managerId: number) {
+  async getPendingForAdmin(reviewerId: number) {
+    const user = await this.db.get<DbUser>('SELECT id, role FROM users WHERE id = $1', [reviewerId]);
+
+    if (!user) {
+      throw new NotFoundException('Nie znaleziono uzytkownika.');
+    }
+
+    if (user.role !== 'ADMIN') {
+      throw new BadRequestException('Liste oczekujacych moze pobierac tylko administrator.');
+    }
+
     return this.db.all<DbLeaveRequest>(
-      `SELECT * FROM leave_requests WHERE manager_id = $1 AND status = 'PENDING' ORDER BY created_at DESC`,
-      [managerId],
+      `SELECT * FROM leave_requests WHERE status = 'PENDING' ORDER BY created_at DESC`,
     );
   }
 
-  async decide(requestId: number, managerId: number, decision: 'APPROVED' | 'REJECTED', comment?: string) {
-    const manager = await this.db.get<DbUser>('SELECT id, role FROM users WHERE id = $1', [managerId]);
-    if (!manager || (manager.role !== 'MANAGER' && manager.role !== 'ADMIN')) {
-      throw new BadRequestException('Decyzje moze podjac kierownik lub administrator.');
+  async decide(requestId: number, adminId: number, decision: 'APPROVED' | 'REJECTED', comment?: string) {
+    const admin = await this.db.get<DbUser>('SELECT id, role FROM users WHERE id = $1', [adminId]);
+    if (!admin || admin.role !== 'ADMIN') {
+      throw new BadRequestException('Decyzje moze podjac tylko administrator.');
     }
 
     const request = await this.getRawById(requestId);
@@ -127,16 +140,34 @@ export class LeaveRequestsService {
 
     await this.notifications.createInApp(request.user_id, eventName, message, {
       requestId,
-      managerId,
+      adminId,
       comment: comment ?? null,
     });
 
     await this.notifications.createEmailFallback(request.user_id, eventName, message, {
       requestId,
-      managerId,
+      adminId,
       comment: comment ?? null,
     });
 
+    return this.getById(requestId);
+  }
+
+  async cancel(requestId: number, userId: number) {
+    const request = await this.getRawById(requestId);
+    if (!request) {
+      throw new NotFoundException('Nie znaleziono wniosku.');
+    }
+    if (request.user_id !== userId) {
+      throw new BadRequestException('Nie mozna anulowac cudzego wniosku.');
+    }
+    if (request.status !== 'PENDING') {
+      throw new BadRequestException('Tylko oczekujace wnioski moga byc anulowane.');
+    }
+    await this.db.run(
+      `UPDATE leave_requests SET status = 'CANCELLED', updated_at = NOW() WHERE id = $1`,
+      [requestId],
+    );
     return this.getById(requestId);
   }
 

@@ -16,6 +16,10 @@ import { RealtimeService } from './realtime/realtime.service';
 import { AttachmentsController } from './attachments/attachments.controller';
 import { AttachmentsService } from './attachments/attachments.service';
 import { OneDriveService } from './onedrive/onedrive.service';
+import { WorkTripsController } from './work-trips/work-trips.controller';
+import { WorkTripsService } from './work-trips/work-trips.service';
+import { LeaveLimitsController } from './leave-limits/leave-limits.controller';
+import { LeaveLimitsService } from './leave-limits/leave-limits.service';
 
 @Module({
   imports: [],
@@ -26,6 +30,8 @@ import { OneDriveService } from './onedrive/onedrive.service';
     NotificationsController,
     RealtimeController,
     AttachmentsController,
+    WorkTripsController,
+    LeaveLimitsController,
   ],
   providers: [
     AppService,
@@ -39,6 +45,8 @@ import { OneDriveService } from './onedrive/onedrive.service';
     RealtimeService,
     AttachmentsService,
     OneDriveService,
+    WorkTripsService,
+    LeaveLimitsService,
   ],
 })
 export class AppModule {}

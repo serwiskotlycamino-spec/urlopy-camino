@@ -5,15 +5,19 @@
   "main": "index.js",
   "scripts": {
     "start": "expo start",
-    "android": "expo start --android",
+    "android": "expo run:android",
+    "android:release": "expo run:android --variant release",
     "lint": "eslint .",
     "build:apk": "npx eas-cli build --platform android --profile preview",
-    "build:aab": "npx eas-cli build --platform android --profile production"
+    "build:aab": "npx eas-cli build --platform android --profile production",
+    "ios": "expo run:ios"
   },
   "dependencies": {
+    "@react-native-community/datetimepicker": "8.4.1",
     "expo": "~53.0.20",
     "expo-asset": "~11.1.7",
     "expo-constants": "~17.1.8",
+    "expo-notifications": "^0.31.5",
     "expo-status-bar": "~2.2.3",
     "react": "19.0.0",
     "react-native": "0.79.6"

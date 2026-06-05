@@ -73,6 +73,18 @@ public sealed class ApiClient
     public Task<LeaveRequest> DecideAsync(int leaveRequestId, string decision, string? comment) =>
         SendAsync<LeaveRequest>(HttpMethod.Patch, $"leave-requests/{leaveRequestId}/decision", new { decision, comment });
 
+    public Task<List<WorkTrip>> GetAllWorkTripsAsync() =>
+        SendAsync<List<WorkTrip>>(HttpMethod.Get, "work-trips/all");
+
+    public Task<List<EmployeeLeaveSummary>> GetLeaveLimitsAsync(int? year = null)
+    {
+        var url = year.HasValue ? $"leave-limits?year={year}" : "leave-limits";
+        return SendAsync<List<EmployeeLeaveSummary>>(HttpMethod.Get, url);
+    }
+
+    public Task<EmployeeLeaveSummary> SetLeaveLimitAsync(int userId, SetLeaveLimitRequest request) =>
+        SendAsync<EmployeeLeaveSummary>(HttpMethod.Put, $"leave-limits/{userId}", request);
+
     private async Task<T> SendAsync<T>(HttpMethod method, string path, object? body = null, bool useAuth = true)
     {
         using var request = new HttpRequestMessage(method, path);

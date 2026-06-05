@@ -1,8 +1,8 @@
 import { IsDateString, IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
 
 export class CreateLeaveRequestDto {
-  @IsIn(['ANNUAL', 'ON_DEMAND', 'SICK', 'UNPAID'])
-  leaveType!: 'ANNUAL' | 'ON_DEMAND' | 'SICK' | 'UNPAID';
+  @IsIn(['ANNUAL', 'ON_DEMAND', 'SICK', 'UNPAID', 'OTHER'])
+  leaveType!: 'ANNUAL' | 'ON_DEMAND' | 'SICK' | 'UNPAID' | 'OTHER';
 
   @IsDateString()
   startDate!: string;

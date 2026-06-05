@@ -12,7 +12,6 @@
     ],
     "android": {
       "package": "com.urlopy.worker",
-      "usesCleartextTraffic": true,
       "versionCode": 2
     },
     "owner": "serwiss-team",
@@ -20,6 +19,17 @@
       "eas": {
         "projectId": "1a6d5842-c9ce-4b12-a571-458a943c82f3"
       }
-    }
+    },
+    "plugins": [
+      "@react-native-community/datetimepicker",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#0f172a",
+          "defaultChannel": "default"
+        }
+      ]
+    ]
   }
 }

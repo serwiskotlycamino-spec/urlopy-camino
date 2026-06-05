@@ -129,6 +129,15 @@ npm --prefix apps/web-admin run dev
 npm --prefix apps/mobile-worker run start
 ```
 
+Tryb deweloperski (`start` + debug build) wymaga dzialajacego Metro na komputerze.
+Jesli telefon ma dzialac bez podlaczenia do komputera, uruchamiaj build release:
+
+```powershell
+npm --prefix apps/mobile-worker run android:release
+```
+
+Aplikacja mobilna jest skonfigurowana na polaczenie CLOUD i domyslnie laczy sie z publicznym API.
+
 ### 3a) Wersja instalacyjna Android (APK)
 
 W katalogu `apps/mobile-worker` jest gotowy profil EAS `preview` budujacy APK.

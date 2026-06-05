@@ -107,10 +107,6 @@ export class AttachmentsService {
       return;
     }
 
-    if (user.role === 'MANAGER' && request.manager_id === user.id) {
-      return;
-    }
-
     if (user.role === 'EMPLOYEE' && request.user_id === user.id) {
       return;
     }

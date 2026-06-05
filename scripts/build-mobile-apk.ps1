@@ -14,6 +14,7 @@ $npx = 'C:\Program Files\nodejs\npx.cmd'
 
 $eas = Get-Content $easJson -Raw | ConvertFrom-Json
 $currentUrl = $eas.build.preview.env.EXPO_PUBLIC_API_URL
+$cloudApiUrl = 'https://urlopy-api-svvhqvitka-lm.a.run.app'
 
 # 1. Ustal URL API dla buildu preview
 $apiUrl = $null
@@ -42,8 +43,8 @@ if ($PublicApiUrl) {
     $apiUrl = "http://${ip}:${ApiPort}"
     Write-Host "Wykryty IP: $ip  ->  API URL: $apiUrl"
 } else {
-    $apiUrl = $currentUrl
-    Write-Host "Tryb produkcyjny: pozostawiam API URL z eas.json: $apiUrl"
+    $apiUrl = $cloudApiUrl
+    Write-Host "Tryb cloud: wymuszam API URL: $apiUrl"
 }
 
 # 2. Zaktualizuj eas.json tylko jesli URL sie zmienil

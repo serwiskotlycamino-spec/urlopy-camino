@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
 import { RealtimeService } from '../realtime/realtime.service';
-import nodemailer, { type Transporter } from 'nodemailer';
+import * as nodemailer from 'nodemailer';
+import type { Transporter } from 'nodemailer';
 import admin from 'firebase-admin';
 
 type NotificationRow = {
@@ -33,6 +34,19 @@ type ResolvedMailSettings = {
   smtpFrom: string;
   communicationMode: 'MULTI' | 'EMAIL_ONLY';
 };
+
+function eventTitle(event: string): string {
+  switch (event) {
+    case 'leave.request.created':
+      return 'Nowy wniosek urlopowy';
+    case 'leave.request.approved':
+      return 'Wniosek urlopowy zatwierdzony';
+    case 'leave.request.rejected':
+      return 'Wniosek urlopowy odrzucony';
+    default:
+      return 'Powiadomienie';
+  }
+}
 
 @Injectable()
 export class NotificationsService {
@@ -92,7 +106,7 @@ export class NotificationsService {
         await mailer.sendMail({
           from: settings.smtpFrom,
           to: contact.email,
-          subject: `[URLopy] ${event}`,
+          subject: `[Program Urlopowy] ${eventTitle(event)}`,
           text: `${message}\n\nPayload: ${JSON.stringify(payload)}`,
         });
       } catch {
@@ -126,7 +140,7 @@ export class NotificationsService {
       await admin.messaging().send({
         token: contact.device_token,
         notification: {
-          title: 'URLopy',
+          title: eventTitle(event),
           body: message,
         },
         data: {
