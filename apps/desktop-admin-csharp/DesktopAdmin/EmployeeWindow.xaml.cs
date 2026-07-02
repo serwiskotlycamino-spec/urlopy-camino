@@ -21,7 +21,7 @@ public partial class EmployeeWindow : Window
         HeaderTextBlock.Text = $"Panel pracownika - {_session.User.Name}";
         ApiInfoTextBlock.Text = $"API: {_apiClient.BaseUrl}";
 
-        LeaveTypeCombo.ItemsSource = new[] { "ANNUAL", "ON_DEMAND", "SICK", "UNPAID" };
+        LeaveTypeCombo.ItemsSource = new[] { "URLOPOWY", "NA ŻĄDANIE", "CHOROBOWY", "BEZPŁATNY" };
         LeaveTypeCombo.SelectedIndex = 0;
 
         var today = DateTime.Today;
@@ -41,7 +41,7 @@ public partial class EmployeeWindow : Window
         catch (Exception ex)
         {
             StatusTextBlock.Text = ex.Message;
-            MessageBox.Show(ex.Message, "Blad", MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageBox.Show(ex.Message, "Błąd", MessageBoxButton.OK, MessageBoxImage.Error);
         }
         finally
         {
@@ -52,7 +52,7 @@ public partial class EmployeeWindow : Window
     private async Task LoadMineAsync()
     {
         MineGrid.ItemsSource = await _apiClient.GetMineAsync();
-        StatusTextBlock.Text = "Zaladowano Twoje wnioski.";
+        StatusTextBlock.Text = "Załadowano Twoje wnioski.";
     }
 
     private async void RefreshButton_Click(object sender, RoutedEventArgs e)
@@ -66,17 +66,17 @@ public partial class EmployeeWindow : Window
         {
             if (StartDatePicker.SelectedDate is null || EndDatePicker.SelectedDate is null)
             {
-                throw new InvalidOperationException("Wybierz date rozpoczecia i zakonczenia.");
+                throw new InvalidOperationException("Wybierz datę rozpoczęcia i zakończenia.");
             }
 
             if (EndDatePicker.SelectedDate.Value.Date < StartDatePicker.SelectedDate.Value.Date)
             {
-                throw new InvalidOperationException("Data zakonczenia nie moze byc wczesniejsza niz data rozpoczecia.");
+                throw new InvalidOperationException("Data zakończenia nie może być wcześniejsza niż data rozpoczęcia.");
             }
 
             var request = new CreateLeaveRequestRequest
             {
-                LeaveType = (LeaveTypeCombo.SelectedItem as string) ?? "ANNUAL",
+                LeaveType = (LeaveTypeCombo.SelectedItem as string) ?? "URLOPOWY",
                 StartDate = StartDatePicker.SelectedDate.Value.ToString("yyyy-MM-dd"),
                 EndDate = EndDatePicker.SelectedDate.Value.ToString("yyyy-MM-dd"),
                 Reason = string.IsNullOrWhiteSpace(ReasonTextBox.Text) ? null : ReasonTextBox.Text.Trim(),
@@ -85,7 +85,7 @@ public partial class EmployeeWindow : Window
             await _apiClient.CreateLeaveRequestAsync(request);
             ReasonTextBox.Clear();
             await LoadMineAsync();
-            StatusTextBlock.Text = "Wniosek zostal zlozony.";
+            StatusTextBlock.Text = "Wniosek został złożony.";
         });
     }
 

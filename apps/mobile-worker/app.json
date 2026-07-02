@@ -3,17 +3,15 @@
     "name": "Urlopy Camino",
     "slug": "urlopy-worker",
     "version": "1.0.0",
+    "android": {
+      "package": "com.urlopy.worker",
+      "googleServicesFile": "./android/app/google-services.json"
+    },
     "jsEngine": "jsc",
     "newArchEnabled": false,
-    "orientation": "portrait",
-    "userInterfaceStyle": "light",
     "assetBundlePatterns": [
       "**/*"
     ],
-    "android": {
-      "package": "com.urlopy.worker",
-      "versionCode": 2
-    },
     "owner": "serwiss-team",
     "extra": {
       "eas": {
@@ -21,15 +19,7 @@
       }
     },
     "plugins": [
-      "@react-native-community/datetimepicker",
-      [
-        "expo-notifications",
-        {
-          "icon": "./assets/icon.png",
-          "color": "#0f172a",
-          "defaultChannel": "default"
-        }
-      ]
+      "expo-notifications"
     ]
   }
 }

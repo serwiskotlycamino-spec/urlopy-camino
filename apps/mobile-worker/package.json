@@ -20,10 +20,11 @@
     "expo-notifications": "^0.31.5",
     "expo-status-bar": "~2.2.3",
     "react": "19.0.0",
-    "react-native": "0.79.6"
+    "react-native": "0.79.6",
+    "react-native-sse": "^1.2.1"
   },
   "devDependencies": {
-    "@types/react": "~19.0.10",
+    "@types/react": "^19.2.16",
     "eslint": "^9.17.0",
     "eslint-config-expo": "^9.2.0",
     "typescript": "~5.8.3"

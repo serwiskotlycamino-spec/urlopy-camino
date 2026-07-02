@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import type { UpdateLeaveRequestDto } from './dto/update-leave-request.dto';
 
 type DbUser = {
   id: number;
@@ -16,12 +17,29 @@ type DbLeaveRequest = {
   start_date: string;
   end_date: string;
   reason: string | null;
-  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
   manager_comment: string | null;
   created_at: string;
   updated_at: string;
   decision_at: string | null;
 };
+
+type UsedOnDemandRow = {
+  used_days: string;
+};
+
+function parseIsoDateToUtc(value: string): Date {
+  const [year, month, day] = value.split('-').map(Number);
+  return new Date(Date.UTC(year, (month || 1) - 1, day || 1));
+}
+
+function daysInclusive(start: string, end: string): number {
+  const ms = parseIsoDateToUtc(end).getTime() - parseIsoDateToUtc(start).getTime();
+  if (ms < 0) {
+    return 0;
+  }
+  return Math.floor(ms / 86400000) + 1;
+}
 
 @Injectable()
 export class LeaveRequestsService {
@@ -48,6 +66,8 @@ export class LeaveRequestsService {
     if (!user || user.role !== 'EMPLOYEE') {
       throw new BadRequestException('Wniosek moze utworzyc tylko pracownik.');
     }
+
+    await this.validateOnDemandLimit(input.userId, input.leaveType, input.startDate, input.endDate);
 
     await this.db.run(
       `INSERT INTO leave_requests
@@ -105,15 +125,77 @@ export class LeaveRequestsService {
     }
 
     if (user.role !== 'ADMIN') {
-      throw new BadRequestException('Liste oczekujacych moze pobierac tylko administrator.');
+      throw new BadRequestException('Liste wnioskow moze pobierac tylko administrator.');
     }
 
-    return this.db.all<DbLeaveRequest>(
-      `SELECT * FROM leave_requests WHERE status = 'PENDING' ORDER BY created_at DESC`,
+    return this.db.all<DbLeaveRequest & { user_name: string }>(
+      `SELECT lr.*, u.name as user_name 
+       FROM leave_requests lr
+       JOIN users u ON lr.user_id = u.id
+       WHERE lr.status IN ('PENDING', 'APPROVED', 'REJECTED')
+       ORDER BY lr.created_at DESC`,
     );
   }
 
-  async decide(requestId: number, adminId: number, decision: 'APPROVED' | 'REJECTED', comment?: string) {
+  async getAllForAdmin(reviewerId: number) {
+    const user = await this.db.get<DbUser>('SELECT id, role FROM users WHERE id = $1', [reviewerId]);
+
+    if (!user) {
+      throw new NotFoundException('Nie znaleziono uzytkownika.');
+    }
+
+    if (user.role !== 'ADMIN') {
+      throw new BadRequestException('Liste wnioskow moze pobierac tylko administrator.');
+    }
+
+    return this.db.all<DbLeaveRequest & { user_name: string }>(
+      `SELECT lr.*, u.name as user_name 
+       FROM leave_requests lr
+       JOIN users u ON lr.user_id = u.id
+       WHERE lr.status IN ('PENDING', 'APPROVED', 'REJECTED')
+       ORDER BY lr.created_at DESC`,
+    );
+  }
+
+  async deleteForAdmin(adminId: number, requestId: number) {
+    const admin = await this.db.get<DbUser>('SELECT id, role FROM users WHERE id = $1', [adminId]);
+    if (!admin || admin.role !== 'ADMIN') {
+      throw new BadRequestException('Wniosek moze usunac tylko administrator.');
+    }
+
+    const request = await this.getRawById(requestId);
+    if (!request) {
+      throw new NotFoundException('Nie znaleziono wniosku.');
+    }
+
+    await this.db.run(
+      `UPDATE leave_requests
+       SET status = 'CANCELLED',
+           manager_comment = COALESCE(manager_comment, 'Anulowano przez administratora'),
+           decision_at = NOW(),
+           updated_at = NOW()
+       WHERE id = $1`,
+      [requestId],
+    );
+
+    await this.notifications.createInApp(
+      request.user_id,
+      'leave.request.cancelled',
+      'Twoj wniosek urlopowy zostal anulowany przez administratora.',
+      { requestId, adminId },
+    );
+
+    await this.notifications.createEmailFallback(
+      request.user_id,
+      'leave.request.cancelled',
+      'Twoj wniosek urlopowy zostal anulowany przez administratora.',
+      { requestId, adminId },
+    );
+
+    return this.getById(requestId);
+  }
+
+  async decide(requestId: number, adminId: number, decision: 'APPROVED' | 'REJECTED' | 'PENDING' | 'CANCELLED', comment?: string) {
     const admin = await this.db.get<DbUser>('SELECT id, role FROM users WHERE id = $1', [adminId]);
     if (!admin || admin.role !== 'ADMIN') {
       throw new BadRequestException('Decyzje moze podjac tylko administrator.');
@@ -124,10 +206,6 @@ export class LeaveRequestsService {
       throw new NotFoundException('Nie znaleziono wniosku.');
     }
 
-    if (request.status !== 'PENDING') {
-      throw new BadRequestException('Wniosek zostal juz rozpatrzony.');
-    }
-
     await this.db.run(
       `UPDATE leave_requests
        SET status = $1, manager_comment = $2, decision_at = NOW(), updated_at = NOW()
@@ -135,16 +213,34 @@ export class LeaveRequestsService {
       [decision, comment ?? null, requestId],
     );
 
-    const eventName = decision === 'APPROVED' ? 'leave.request.approved' : 'leave.request.rejected';
-    const message = decision === 'APPROVED' ? 'Twoj wniosek urlopowy zostal zatwierdzony.' : 'Twoj wniosek urlopowy zostal odrzucony.';
+    if (decision === 'PENDING') {
+      return this.getById(requestId);
+    }
 
-    await this.notifications.createInApp(request.user_id, eventName, message, {
+    const eventMap: Record<'APPROVED' | 'REJECTED' | 'CANCELLED', { event: string; message: string }> = {
+      APPROVED: {
+        event: 'leave.request.approved',
+        message: 'Twoj wniosek urlopowy zostal zatwierdzony.',
+      },
+      REJECTED: {
+        event: 'leave.request.rejected',
+        message: 'Twoj wniosek urlopowy zostal odrzucony.',
+      },
+      CANCELLED: {
+        event: 'leave.request.cancelled',
+        message: 'Twoj wniosek urlopowy zostal anulowany przez administratora.',
+      },
+    };
+
+    const mapped = eventMap[decision as 'APPROVED' | 'REJECTED' | 'CANCELLED'];
+
+    await this.notifications.createInApp(request.user_id, mapped.event, mapped.message, {
       requestId,
       adminId,
       comment: comment ?? null,
     });
 
-    await this.notifications.createEmailFallback(request.user_id, eventName, message, {
+    await this.notifications.createEmailFallback(request.user_id, mapped.event, mapped.message, {
       requestId,
       adminId,
       comment: comment ?? null,
@@ -171,6 +267,40 @@ export class LeaveRequestsService {
     return this.getById(requestId);
   }
 
+  async updateMine(requestId: number, userId: number, dto: UpdateLeaveRequestDto) {
+    const request = await this.getRawById(requestId);
+    if (!request) {
+      throw new NotFoundException('Nie znaleziono wniosku.');
+    }
+    if (request.user_id !== userId) {
+      throw new BadRequestException('Nie mozna edytowac cudzego wniosku.');
+    }
+    if (request.status !== 'PENDING') {
+      throw new BadRequestException('Edytowac mozna tylko wniosek w statusie PENDING.');
+    }
+    if (dto.expectedUpdatedAt && request.updated_at !== dto.expectedUpdatedAt) {
+      throw new BadRequestException('Wniosek zostal zmieniony w miedzyczasie. Odswiez liste i sprobuj ponownie.');
+    }
+    if (new Date(dto.endDate).getTime() < new Date(dto.startDate).getTime()) {
+      throw new BadRequestException('Data zakonczenia nie moze byc wczesniejsza niz data rozpoczecia.');
+    }
+
+    await this.validateOnDemandLimit(userId, dto.leaveType, dto.startDate, dto.endDate, requestId);
+
+    await this.db.run(
+      `UPDATE leave_requests
+       SET leave_type = $1,
+           start_date = $2,
+           end_date = $3,
+           reason = $4,
+           updated_at = NOW()
+       WHERE id = $5`,
+      [dto.leaveType, dto.startDate, dto.endDate, dto.reason ?? null, requestId],
+    );
+
+    return this.getById(requestId);
+  }
+
   async getById(id: number) {
     const row = await this.getRawById(id);
     if (!row) {
@@ -181,5 +311,45 @@ export class LeaveRequestsService {
 
   private async getRawById(id: number) {
     return this.db.get<DbLeaveRequest>('SELECT * FROM leave_requests WHERE id = $1', [id]);
+  }
+
+  private async validateOnDemandLimit(
+    userId: number,
+    leaveType: string,
+    startDate: string,
+    endDate: string,
+    excludeRequestId?: number,
+  ): Promise<void> {
+    if (leaveType !== 'ON_DEMAND') {
+      return;
+    }
+
+    const start = parseIsoDateToUtc(startDate);
+    const end = parseIsoDateToUtc(endDate);
+    if (start.getUTCFullYear() !== end.getUTCFullYear()) {
+      throw new BadRequestException('Urlop na zadanie musi miescic sie w jednym roku kalendarzowym.');
+    }
+
+    const requestedDays = daysInclusive(startDate, endDate);
+    if (requestedDays <= 0) {
+      throw new BadRequestException('Nieprawidlowy zakres dat dla urlopu na zadanie.');
+    }
+
+    const year = start.getUTCFullYear();
+    const used = await this.db.get<UsedOnDemandRow>(
+      `SELECT COALESCE(SUM(end_date::date - start_date::date + 1), 0)::text AS used_days
+       FROM leave_requests
+       WHERE user_id = $1
+         AND leave_type = 'ON_DEMAND'
+         AND status IN ('PENDING', 'APPROVED')
+         AND EXTRACT(YEAR FROM start_date) = $2
+         AND ($3::int IS NULL OR id <> $3)`,
+      [userId, year, excludeRequestId ?? null],
+    );
+
+    const usedDays = Number(used?.used_days ?? '0');
+    if (usedDays + requestedDays > 4) {
+      throw new BadRequestException('Limit urlopu na zadanie to 4 dni na rok kalendarzowy.');
+    }
   }
 }

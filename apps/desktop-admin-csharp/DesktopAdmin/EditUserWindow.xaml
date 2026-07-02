@@ -1,0 +1,36 @@
+<Window x:Class="DesktopAdmin.EditUserWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Edytuj użytkownika"
+        Height="280"
+        Width="400"
+        ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False">
+    <Grid Margin="15">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <TextBlock Grid.Row="0" Grid.Column="0" Text="Imię:" VerticalAlignment="Center" Margin="0,0,10,0" />
+        <TextBox Grid.Row="0" Grid.Column="1" x:Name="NameTextBox" Margin="0,0,0,10" />
+
+        <TextBlock Grid.Row="1" Grid.Column="0" Text="Email:" VerticalAlignment="Center" Margin="0,0,10,0" />
+        <TextBox Grid.Row="1" Grid.Column="1" x:Name="EmailTextBox" Margin="0,0,0,10" />
+
+        <TextBlock Grid.Row="2" Grid.Column="0" Text="Nowe hasło:" VerticalAlignment="Center" Margin="0,0,10,0" />
+        <TextBox Grid.Row="2" Grid.Column="1" x:Name="PasswordTextBox" Margin="0,0,0,10" />
+        <TextBlock Grid.Row="3" Grid.Column="1" Text="(pozostaw puste, aby nie zmieniać)" FontStyle="Italic" FontSize="11" Foreground="Gray" Margin="0,0,0,10"/>
+
+        <StackPanel Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="2" Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button x:Name="SaveButton" Content="Zapisz" Width="100" IsDefault="True" Click="SaveButton_Click" />
+            <Button x:Name="CancelButton" Content="Anuluj" Width="100" IsCancel="True" Margin="10,0,0,0" Click="CancelButton_Click" />
+        </StackPanel>
+    </Grid>
+</Window>

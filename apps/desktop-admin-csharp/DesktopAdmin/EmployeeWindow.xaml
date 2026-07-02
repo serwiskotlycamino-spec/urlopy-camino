@@ -91,7 +91,7 @@
                 <DataGridTextColumn Header="Typ" Binding="{Binding LeaveType}" Width="120" />
                 <DataGridTextColumn Header="Od" Binding="{Binding StartDate}" Width="120" />
                 <DataGridTextColumn Header="Do" Binding="{Binding EndDate}" Width="120" />
-                <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="120" />
+                <DataGridTextColumn Header="Status" Binding="{Binding StatusPl}" Width="120" />
                 <DataGridTextColumn Header="Komentarz przełożonego" Binding="{Binding ManagerComment}" Width="220" />
                 <DataGridTextColumn Header="Powód" Binding="{Binding Reason}" Width="*" />
             </DataGrid.Columns>

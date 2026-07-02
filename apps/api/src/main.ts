@@ -29,7 +29,7 @@ async function bootstrap() {
       forbidNonWhitelisted: true,
     }),
   );
-  await app.listen(process.env.PORT ? Number(process.env.PORT) : 3001);
+  await app.listen(process.env.PORT ? Number(process.env.PORT) : 3000);
 }
 
 void bootstrap().catch((error: unknown) => {

@@ -56,23 +56,76 @@ public sealed class LeaveRequest
     [JsonPropertyName("user_id")]
     public int UserId { get; set; }
 
+    [JsonPropertyName("user_name")]
+    public string UserName { get; set; } = string.Empty;
+
     [JsonPropertyName("manager_id")]
     public int? ManagerId { get; set; }
 
     [JsonPropertyName("leave_type")]
     public string LeaveType { get; set; } = string.Empty;
 
+    public string LeaveTypePl
+    {
+        get
+        {
+            return LeaveType switch
+            {
+                "ANNUAL" => "Urlop roczny",
+                "SICK" => "Urlop chorobowy",
+                "UNPAID" => "Urlop bezpłatny",
+                "ON_DEMAND" => "Urlop na żądanie",
+                "OTHER" => "Inny",
+                _ => LeaveType,
+            };
+        }
+    }
+
     [JsonPropertyName("start_date")]
     public string StartDate { get; set; } = string.Empty;
 
+    public string StartDateOnly
+    {
+        get
+        {
+            if (DateTime.TryParse(StartDate, out var date))
+                return date.ToString("yyyy-MM-dd");
+            return StartDate;
+        }
+    }
+
     [JsonPropertyName("end_date")]
     public string EndDate { get; set; } = string.Empty;
+
+    public string EndDateOnly
+    {
+        get
+        {
+            if (DateTime.TryParse(EndDate, out var date))
+                return date.ToString("yyyy-MM-dd");
+            return EndDate;
+        }
+    }
 
     [JsonPropertyName("reason")]
     public string? Reason { get; set; }
 
     [JsonPropertyName("status")]
     public string Status { get; set; } = string.Empty;
+
+    public string StatusPl
+    {
+        get
+        {
+            return Status switch
+            {
+                "PENDING" => "Przetwarzany",
+                "APPROVED" => "Zatwierdzony",
+                "REJECTED" => "Odrzucony",
+                _ => Status,
+            };
+        }
+    }
 
     [JsonPropertyName("manager_comment")]
     public string? ManagerComment { get; set; }
@@ -207,6 +260,60 @@ public sealed class CreateLeaveRequestRequest
     public string? Reason { get; set; }
 }
 
+public sealed class CreateWorkTripRequest
+{
+    [JsonPropertyName("userId")]
+    public int UserId { get; set; }
+
+    [JsonPropertyName("tripDate")]
+    public string TripDate { get; set; } = string.Empty;
+
+    [JsonPropertyName("startTime")]
+    public string StartTime { get; set; } = string.Empty;
+
+    [JsonPropertyName("endTime")]
+    public string EndTime { get; set; } = string.Empty;
+
+    [JsonPropertyName("destination")]
+    public string? Destination { get; set; }
+
+    [JsonPropertyName("description")]
+    public string? Description { get; set; }
+}
+
+public sealed class UpdateWorkTripRequest
+{
+    [JsonPropertyName("tripDate")]
+    public string? TripDate { get; set; }
+
+    [JsonPropertyName("startTime")]
+    public string? StartTime { get; set; }
+
+    [JsonPropertyName("endTime")]
+    public string? EndTime { get; set; }
+
+    [JsonPropertyName("destination")]
+    public string? Destination { get; set; }
+
+    [JsonPropertyName("description")]
+    public string? Description { get; set; }
+}
+
+public sealed class ReviewWorkTripRequest
+{
+    [JsonPropertyName("decision")]
+    public string Decision { get; set; } = string.Empty;
+
+    [JsonPropertyName("startTime")]
+    public string? StartTime { get; set; }
+
+    [JsonPropertyName("endTime")]
+    public string? EndTime { get; set; }
+
+    [JsonPropertyName("comment")]
+    public string? Comment { get; set; }
+}
+
 public sealed class WorkTrip
 {
     [JsonPropertyName("id")]
@@ -235,6 +342,27 @@ public sealed class WorkTrip
 
     [JsonPropertyName("user_email")]
     public string? UserEmail { get; set; }
+
+    [JsonPropertyName("status")]
+    public string Status { get; set; } = string.Empty;
+
+    [JsonPropertyName("manager_comment")]
+    public string? ManagerComment { get; set; }
+
+    public string StatusPl
+    {
+        get
+        {
+            return Status switch
+            {
+                "PENDING" => "Oczekujący",
+                "APPROVED" => "Zatwierdzony",
+                "REJECTED" => "Odrzucony",
+                "ADJUSTED" => "Skorygowany",
+                _ => Status,
+            };
+        }
+    }
 }
 
 public sealed class EmployeeLeaveSummary

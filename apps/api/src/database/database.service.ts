@@ -109,6 +109,9 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
         end_time TIME NOT NULL,
         destination VARCHAR(255),
         description TEXT,
+        status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+        manager_comment TEXT,
+        decision_at TIMESTAMP,
         created_at TIMESTAMP NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMP NOT NULL DEFAULT NOW()
       );
@@ -123,6 +126,10 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
         UNIQUE(user_id, year)
       );
     `);
+
+    await this.pool.query(`ALTER TABLE work_trips ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'PENDING'`);
+    await this.pool.query(`ALTER TABLE work_trips ADD COLUMN IF NOT EXISTS manager_comment TEXT`);
+    await this.pool.query(`ALTER TABLE work_trips ADD COLUMN IF NOT EXISTS decision_at TIMESTAMP`);
 
     // Migracja: usun role MANAGER (zamien na EMPLOYEE).
     await this.pool.query(`UPDATE users SET role = 'EMPLOYEE' WHERE role = 'MANAGER'`);

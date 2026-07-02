@@ -50,6 +50,8 @@ public sealed class ApiClient
 
     public Task<List<LeaveRequest>> GetPendingAsync() => SendAsync<List<LeaveRequest>>(HttpMethod.Get, "leave-requests/pending");
 
+    public Task<List<LeaveRequest>> GetAllLeaveRequestsAsync() => SendAsync<List<LeaveRequest>>(HttpMethod.Get, "leave-requests/all");
+
     public Task<List<LeaveRequest>> GetMineAsync() => SendAsync<List<LeaveRequest>>(HttpMethod.Get, "leave-requests/mine");
 
     public Task<LeaveRequest> CreateLeaveRequestAsync(CreateLeaveRequestRequest request) =>
@@ -74,10 +76,18 @@ public sealed class ApiClient
     public Task<MailSettings> UpdateMailSettingsAsync(UpdateMailSettingsRequest request) =>
         SendAsync<MailSettings>(HttpMethod.Put, "auth/mail-settings", request);
 
-    public Task LogoutAsync() => SendAsync<object>(HttpMethod.Post, "auth/logout", new { });
+    public async Task LogoutAsync()
+    {
+        await SendAsync<object>(HttpMethod.Post, "auth/logout", new { });
+        _accessToken = null;
+        _refreshToken = null;
+    }
 
     public Task<LeaveRequest> DecideAsync(int leaveRequestId, string decision, string? comment) =>
         SendAsync<LeaveRequest>(HttpMethod.Patch, $"leave-requests/{leaveRequestId}/decision", new { decision, comment });
+
+    public Task DeleteLeaveRequestForAdminAsync(int leaveRequestId) =>
+        SendAsync<object>(HttpMethod.Delete, $"leave-requests/{leaveRequestId}/admin");
 
     public Task<List<WorkTrip>> GetAllWorkTripsAsync() =>
         SendAsync<List<WorkTrip>>(HttpMethod.Get, "work-trips/all");
@@ -93,6 +103,18 @@ public sealed class ApiClient
 
     public Task DeleteUserAsync(int userId) =>
         SendAsync<object>(HttpMethod.Delete, $"auth/users/{userId}");
+
+    public Task<WorkTrip> CreateWorkTripAsync(CreateWorkTripRequest request) =>
+        SendAsync<WorkTrip>(HttpMethod.Post, "work-trips", request);
+
+    public Task<WorkTrip> UpdateWorkTripAsync(int tripId, UpdateWorkTripRequest request) =>
+        SendAsync<WorkTrip>(HttpMethod.Patch, $"work-trips/{tripId}/hours", request);
+
+    public Task<WorkTrip> ReviewWorkTripAsync(int tripId, ReviewWorkTripRequest request) =>
+        SendAsync<WorkTrip>(HttpMethod.Patch, $"work-trips/{tripId}/review", request);
+
+    public Task DeleteWorkTripAsync(int tripId) =>
+        SendAsync<object>(HttpMethod.Delete, $"work-trips/{tripId}");
 
     private async Task<T> SendAsync<T>(HttpMethod method, string path, object? body = null, bool useAuth = true)
     {
@@ -111,19 +133,24 @@ public sealed class ApiClient
 
         using var response = await _httpClient.SendAsync(request);
 
-        if (response.StatusCode == HttpStatusCode.Unauthorized && useAuth && await TryRefreshTokenAsync())
+        if (response.StatusCode == HttpStatusCode.Unauthorized && useAuth)
         {
-            return await SendAsync<T>(method, path, body, useAuth: true);
+            if (await TryRefreshTokenAsync())
+            {
+                return await SendAsync<T>(method, path, body, useAuth: true);
+            }
+            
+            throw new UnauthorizedAccessException("Token jest nieprawidłowy lub sesja wygasła.");
         }
-
-        var responseText = await response.Content.ReadAsStringAsync();
 
         if (!response.IsSuccessStatusCode)
         {
+            var responseText = await response.Content.ReadAsStringAsync();
             throw new InvalidOperationException(ExtractApiMessage(response.StatusCode, responseText));
         }
 
-        var parsed = JsonSerializer.Deserialize<T>(responseText, JsonOptions);
+        var successResponseText = await response.Content.ReadAsStringAsync();
+        var parsed = JsonSerializer.Deserialize<T>(successResponseText, JsonOptions);
         if (parsed is null)
         {
             throw new InvalidOperationException("Brak danych w odpowiedzi API.");

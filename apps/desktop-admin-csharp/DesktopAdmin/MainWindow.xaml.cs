@@ -14,7 +14,7 @@ public partial class MainWindow : Window
 
     private ApiClient _apiClient;
     private LoginResponse? _session;
-
+    private System.Windows.Threading.DispatcherTimer? _refreshTimer;
     public MainWindow()
         : this(new ApiClient(DefaultApiUrl), null)
     {
@@ -24,21 +24,17 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         _apiClient = apiClient;
-
         var settings = AppSettings.Load();
-        WindowPersistence.Attach(this, settings, "Admin", PendingGrid, UsersGrid);
-
+        WindowPersistence.Attach(this, settings, "Admin", RequestsGrid, UsersGrid);
         ApiUrlTextBox.Text = _apiClient.BaseUrl;
         EmailTextBox.Text = "serwis@kotlycamino.pl";
         PasswordBox.Password = "Camino2023?";
 
         NewUserRoleCombo.ItemsSource = new[] { "ADMIN", "EMPLOYEE" };
         NewUserRoleCombo.SelectedIndex = 1;
-
         UpdateRoleCombo.ItemsSource = new[] { "ADMIN", "EMPLOYEE" };
         UpdateRoleCombo.SelectedIndex = 1;
-
-        CommunicationModeCombo.ItemsSource = new[] { "MULTI", "EMAIL_ONLY" };
+        CommunicationModeCombo.ItemsSource = new[] { "MULTI", "TYLKO EMAIL" };
         CommunicationModeCombo.SelectedIndex = 0;
 
         if (session is not null)
@@ -51,11 +47,26 @@ public partial class MainWindow : Window
 
             Loaded += async (_, _) =>
             {
-                await RunBusyAsync(LoadAdminDataAsync);
+                await RunBusyAsync(LoadAllTabsAsync);
+                StartAutoRefresh();
             };
         }
     }
 
+    private void StartAutoRefresh()
+    {
+        _refreshTimer = new System.Windows.Threading.DispatcherTimer
+        {
+            Interval = TimeSpan.FromSeconds(30)
+        };
+        _refreshTimer.Tick += async (s, e) => await RefreshAllTabsAsync();
+        _refreshTimer.Start();
+    }
+
+    private async Task RefreshAllTabsAsync()
+    {
+        await RunBusyAsync(LoadAllTabsAsync, showErrors: false);
+    }
     private void SetStatus(string message)
     {
         StatusTextBlock.Text = message;
@@ -66,30 +77,51 @@ public partial class MainWindow : Window
         return _session?.User.Role is "ADMIN";
     }
 
-    private async Task RunBusyAsync(Func<Task> work)
+    private async Task RunBusyAsync(Func<Task> work, bool showErrors = true)
     {
         try
         {
             IsEnabled = false;
             await work();
         }
+        catch (UnauthorizedAccessException)
+        {
+            if (_refreshTimer != null) _refreshTimer.Stop();
+            await _apiClient.LogoutAsync(); // Wylogowanie z API
+            _session = null;
+            CurrentUserTextBlock.Text = string.Empty;
+            LoginPanel.Visibility = Visibility.Visible;
+            ApplyApiButton.IsEnabled = true;
+            MainTabs.IsEnabled = false;
+            SetStatus("Sesja wygasła. Zaloguj się ponownie.");
+            if (showErrors) MessageBox.Show("Sesja wygasła. Zaloguj się ponownie.", "Błąd autentykacji", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
         catch (Exception ex)
         {
-            SetStatus($"Blad: {ex.Message}");
-            MessageBox.Show(ex.Message, "Blad", MessageBoxButton.OK, MessageBoxImage.Error);
+            SetStatus($"Błąd: {ex.Message}");
+            if (showErrors) MessageBox.Show(ex.Message, "Błąd", MessageBoxButton.OK, MessageBoxImage.Error);
         }
         finally
         {
             IsEnabled = true;
         }
     }
-
-    private async Task LoadAdminDataAsync()
+    private async Task LoadAllTabsAsync()
     {
-        var pending = await _apiClient.GetPendingAsync();
-        PendingGrid.ItemsSource = pending;
-
+        var requests = await _apiClient.GetAllLeaveRequestsAsync();
         var users = await _apiClient.GetUsersAsync();
+        var userMap = users.ToDictionary(u => u.Id, u => u.Name);
+
+        foreach (var req in requests)
+        {
+            if (string.IsNullOrEmpty(req.UserName) && userMap.TryGetValue(req.UserId, out var userName))
+            {
+                req.UserName = userName;
+            }
+        }
+
+        RequestsGrid.ItemsSource = requests;
+
         UsersGrid.ItemsSource = users;
 
         var mail = await _apiClient.GetMailSettingsAsync();
@@ -103,19 +135,70 @@ public partial class MainWindow : Window
         ImapSecureCheck.IsChecked = mail.ImapSecure;
         CommunicationModeCombo.SelectedItem = mail.CommunicationMode;
 
-        SetStatus("Dane administratora zaladowane.");
+        var workTrips = await _apiClient.GetAllWorkTripsAsync();
+        WorkTripsGrid.ItemsSource = workTrips;
+
+        WorkTripUserComboBox.ItemsSource = users;
+        if (users.Count > 0)
+        {
+            WorkTripUserComboBox.SelectedIndex = 0;
+        }
+
+        WorkTripDatePicker.SelectedDate = DateTime.Today;
+
+        SetStatus("Dane załadowane.");
+    }
+    private WorkTrip? GetSelectedWorkTrip() => WorkTripsGrid.SelectedItem as WorkTrip;
+    private async void ApproveWorkTripButton_Click(object sender, RoutedEventArgs e)
+    {
+        await RunBusyAsync(async () =>
+        {
+            var selected = GetSelectedWorkTrip();
+            if (selected is null)
+            {
+                MessageBox.Show("Wybierz wyjazd z listy.", "Brak wyboru", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+            var request = new ReviewWorkTripRequest
+            {
+                Decision = "APPROVED",
+                Comment = WorkTripCommentTextBox.Text.Trim()
+            };
+            await _apiClient.ReviewWorkTripAsync(selected.Id, request);
+            await RefreshAllTabsAsync();
+            SetStatus($"Wyjazd #{selected.Id} został zaakceptowany.");
+        });
     }
 
+    private async void RejectWorkTripButton_Click(object sender, RoutedEventArgs e)
+    {
+        await RunBusyAsync(async () =>
+        {
+            var selected = GetSelectedWorkTrip();
+            if (selected is null)
+            {
+                MessageBox.Show("Wybierz wyjazd z listy.", "Brak wyboru", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+            var request = new ReviewWorkTripRequest
+            {
+                Decision = "REJECTED",
+                Comment = WorkTripCommentTextBox.Text.Trim()
+            };
+            await _apiClient.ReviewWorkTripAsync(selected.Id, request);
+            await RefreshAllTabsAsync();
+            SetStatus($"Wyjazd #{selected.Id} został odrzucony.");
+        });
+    }
     private LeaveRequest? GetSelectedLeaveRequest()
     {
-        return PendingGrid.SelectedItem as LeaveRequest;
+        return RequestsGrid.SelectedItem as LeaveRequest;
     }
 
     private UserSummary? GetSelectedUser()
     {
         return UsersGrid.SelectedItem as UserSummary;
     }
-
     private async Task DecideAsync(string decision)
     {
         var request = GetSelectedLeaveRequest();
@@ -126,12 +209,19 @@ public partial class MainWindow : Window
         }
 
         var comment = DecisionCommentTextBox.Text.Trim();
-        await _apiClient.DecideAsync(request.Id, decision, string.IsNullOrWhiteSpace(comment) ? null : comment);
-        await LoadAdminDataAsync();
-        SetStatus($"Wniosek #{request.Id} -> {decision}");
+        var updated = await _apiClient.DecideAsync(request.Id, decision, string.IsNullOrWhiteSpace(comment) ? null : comment);
+        
+        request.Status = updated.Status;
+        request.ManagerComment = updated.ManagerComment;
+        if (string.IsNullOrEmpty(request.UserName) && !string.IsNullOrEmpty(updated.UserName))
+        {
+            request.UserName = updated.UserName;
+        }
+        
+        RequestsGrid.Items.Refresh();
+        SetStatus($"Wniosek #{request.Id} -> {(decision == "APPROVED" ? "Zaakceptowany" : "Odrzucony")}");
     }
-
-    private void ApplyApiButton_Click(object sender, RoutedEventArgs e)
+     private void ApplyApiButton_Click(object sender, RoutedEventArgs e)
     {
         var url = ApiUrlTextBox.Text.Trim();
         if (string.IsNullOrWhiteSpace(url))
@@ -146,7 +236,6 @@ public partial class MainWindow : Window
         _session = null;
         SetStatus($"Ustawiono API: {url}");
     }
-
     private async void LoginButton_Click(object sender, RoutedEventArgs e)
     {
         await RunBusyAsync(async () =>
@@ -156,7 +245,7 @@ public partial class MainWindow : Window
 
             if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(password))
             {
-                throw new InvalidOperationException("Email i haslo sa wymagane.");
+                throw new InvalidOperationException("Email i hasło są wymagane.");
             }
 
             var session = await _apiClient.LoginAsync(email, password);
@@ -171,19 +260,17 @@ public partial class MainWindow : Window
             }
 
             MainTabs.IsEnabled = true;
-            await LoadAdminDataAsync();
+            await LoadAllTabsAsync();
         });
     }
-
     private async void RefreshPendingButton_Click(object sender, RoutedEventArgs e)
     {
         await RunBusyAsync(async () =>
         {
-            PendingGrid.ItemsSource = await _apiClient.GetPendingAsync();
-            SetStatus("Odswiezono liste oczekujacych.");
+            RequestsGrid.ItemsSource = await _apiClient.GetAllLeaveRequestsAsync();
+            SetStatus("Odświeżono listę wniosków.");
         });
     }
-
     private async void ApproveButton_Click(object sender, RoutedEventArgs e)
     {
         await RunBusyAsync(() => DecideAsync("APPROVED"));
@@ -193,17 +280,54 @@ public partial class MainWindow : Window
     {
         await RunBusyAsync(() => DecideAsync("REJECTED"));
     }
+     private async void SaveCommentButton_Click(object sender, RoutedEventArgs e)
+    {
+        var request = GetSelectedLeaveRequest();
+        if (request is null)
+        {
+            MessageBox.Show("Wybierz wniosek z listy.", "Brak wyboru", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
 
+        await RunBusyAsync(async () =>
+        {
+            var comment = DecisionCommentTextBox.Text.Trim();
+            await _apiClient.DecideAsync(request.Id, request.Status, string.IsNullOrWhiteSpace(comment) ? null : comment);
+            await LoadAllTabsAsync();
+            SetStatus($"Zaktualizowano komentarz dla wniosku #{request.Id}");
+        });
+    }
+
+    private async void DeleteLeaveButton_Click(object sender, RoutedEventArgs e)
+    {
+        var selected = GetSelectedLeaveRequest();
+        if (selected is null)
+        {
+            MessageBox.Show("Wybierz wniosek do usunięcia.", "Brak wyboru", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        if (MessageBox.Show($"Czy na pewno chcesz usunąć wniosek #{selected.Id}?", "Potwierdzenie", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        await RunBusyAsync(async () =>
+        {
+            await _apiClient.DeleteLeaveRequestForAdminAsync(selected.Id);
+            await LoadAllTabsAsync();
+            SetStatus($"Wniosek #{selected.Id} został usunięty.");
+        });
+    }
     private async void RefreshUsersButton_Click(object sender, RoutedEventArgs e)
     {
         await RunBusyAsync(async () =>
         {
             UsersGrid.ItemsSource = await _apiClient.GetUsersAsync();
-            SetStatus("Odswiezono liste uzytkownikow.");
+            SetStatus("Odświeżono listę użytkowników.");
         });
     }
-
-    private async void CreateUserButton_Click(object sender, RoutedEventArgs e)
+     private async void CreateUserButton_Click(object sender, RoutedEventArgs e)
     {
         await RunBusyAsync(async () =>
         {
@@ -214,7 +338,7 @@ public partial class MainWindow : Window
 
             if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(password))
             {
-                throw new InvalidOperationException("Imie, email i haslo sa wymagane.");
+                throw new InvalidOperationException("Imię, email i hasło są wymagane.");
             }
 
             await _apiClient.CreateUserAsync(new CreateUserRequest
@@ -230,7 +354,7 @@ public partial class MainWindow : Window
             NewUserEmailTextBox.Clear();
             NewUserPasswordTextBox.Clear();
             NewUserRoleCombo.SelectedIndex = 1;
-            SetStatus($"Dodano uzytkownika: {email}");
+            SetStatus($"Dodano użytkownika: {email}");
         });
     }
 
@@ -241,7 +365,7 @@ public partial class MainWindow : Window
             var selected = GetSelectedUser();
             if (selected is null)
             {
-                throw new InvalidOperationException("Wybierz uzytkownika do zmiany roli.");
+                throw new InvalidOperationException("Wybierz użytkownika do zmiany roli.");
             }
 
             var role = (UpdateRoleCombo.SelectedItem as string) ?? "EMPLOYEE";
@@ -252,7 +376,7 @@ public partial class MainWindow : Window
             });
 
             UsersGrid.ItemsSource = await _apiClient.GetUsersAsync();
-            SetStatus($"Zmieniono role uzytkownika #{selected.Id}.");
+            SetStatus($"Zmieniono rolę użytkownika #{selected.Id}.");
         });
     }
 
@@ -270,7 +394,7 @@ public partial class MainWindow : Window
             ImapUserTextBox.Text = mail.ImapUser;
             ImapSecureCheck.IsChecked = mail.ImapSecure;
             CommunicationModeCombo.SelectedItem = mail.CommunicationMode;
-            SetStatus("Odswiezono ustawienia mail.");
+            SetStatus("Odświeżono ustawienia mail.");
         });
     }
 
@@ -280,12 +404,12 @@ public partial class MainWindow : Window
         {
             if (!int.TryParse(SmtpPortTextBox.Text.Trim(), out var smtpPort))
             {
-                throw new InvalidOperationException("SMTP port musi byc liczba.");
+                throw new InvalidOperationException("Port SMTP musi być liczbą.");
             }
 
             if (!int.TryParse(ImapPortTextBox.Text.Trim(), out var imapPort))
             {
-                throw new InvalidOperationException("IMAP port musi byc liczba.");
+                throw new InvalidOperationException("Port IMAP musi być liczbą.");
             }
 
             var request = new UpdateMailSettingsRequest
@@ -317,21 +441,27 @@ public partial class MainWindow : Window
             DecisionCommentTextBox.Text = selected.ManagerComment ?? string.Empty;
         }
     }
-
-    private void UsersGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
+     private void UsersGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (GetSelectedUser() is { } selected)
         {
             UpdateRoleCombo.SelectedItem = selected.Role;
-            EditUserNameTextBox.Text = selected.Name;
-            EditUserEmailTextBox.Text = selected.Email;
-            EditUserPasswordTextBox.Text = string.Empty; // Hasła nie odczytujemy
         }
-        else
+    }
+
+    private async void UsersGrid_MouseDoubleClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (GetSelectedUser() is { } selectedUser)
         {
-            EditUserNameTextBox.Text = string.Empty;
-            EditUserEmailTextBox.Text = string.Empty;
-            EditUserPasswordTextBox.Text = string.Empty;
+            var editWindow = new EditUserWindow(_apiClient, selectedUser);
+            if (editWindow.ShowDialog() == true)
+            {
+                await RunBusyAsync(async () =>
+                {
+                    UsersGrid.ItemsSource = await _apiClient.GetUsersAsync();
+                    SetStatus($"Zaktualizowano dane użytkownika #{selectedUser.Id}.");
+                });
+            }
         }
     }
 
@@ -347,22 +477,9 @@ public partial class MainWindow : Window
             }
 
             var request = new UpdateUserSettingsRequest();
+
+            // Logika przeniesiona do EditUserWindow
             
-            if (!string.IsNullOrWhiteSpace(EditUserNameTextBox.Text) && EditUserNameTextBox.Text.Trim() != selectedUser.Name)
-            {
-                request.Name = EditUserNameTextBox.Text.Trim();
-            }
-
-            if (!string.IsNullOrWhiteSpace(EditUserEmailTextBox.Text) && EditUserEmailTextBox.Text.Trim() != selectedUser.Email)
-            {
-                request.Email = EditUserEmailTextBox.Text.Trim();
-            }
-
-            if (!string.IsNullOrWhiteSpace(EditUserPasswordTextBox.Text))
-            {
-                request.Password = EditUserPasswordTextBox.Text;
-            }
-
             if (request.Name == null && request.Email == null && request.Password == null)
             {
                 SetStatus("Brak zmian do zapisania.");
@@ -371,11 +488,9 @@ public partial class MainWindow : Window
 
             await _apiClient.UpdateUserSettingsAsync(selectedUser.Id, request);
             UsersGrid.ItemsSource = await _apiClient.GetUsersAsync();
-            EditUserPasswordTextBox.Text = string.Empty;
             SetStatus($"Zaktualizowano dane użytkownika #{selectedUser.Id}.");
         });
     }
-
     private async void LogoutButton_Click(object sender, RoutedEventArgs e)
     {
         await RunBusyAsync(async () =>
@@ -399,12 +514,10 @@ public partial class MainWindow : Window
             Close();
         });
     }
-
     private void CloseButton_Click(object sender, RoutedEventArgs e)
     {
         Close();
     }
-
     private async void DeleteUserButton_Click(object sender, RoutedEventArgs e)
     {
         await RunBusyAsync(async () =>
@@ -429,4 +542,8 @@ public partial class MainWindow : Window
             }
         });
     }
+    private void RefreshWorkTripsButton_Click(object sender, RoutedEventArgs e) { }
+    private void AddWorkTripButton_Click(object sender, RoutedEventArgs e) { }
+    private void UpdateWorkTripButton_Click(object sender, RoutedEventArgs e) { }
+    private void DeleteWorkTripButton_Click(object sender, RoutedEventArgs e) { }
 }

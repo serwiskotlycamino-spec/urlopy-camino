@@ -93,7 +93,7 @@
         </Border>
 
         <TabControl Grid.Row="3" x:Name="MainTabs" IsEnabled="False">
-            <TabItem Header="Wnioski oczekujące">
+            <TabItem Header="Wszystkie wnioski">
                 <Grid Margin="10">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="*" />
@@ -101,7 +101,7 @@
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
-                    <DataGrid x:Name="PendingGrid"
+                    <DataGrid x:Name="RequestsGrid"
                               Grid.Row="0"
                               AutoGenerateColumns="False"
                               CanUserAddRows="False"
@@ -111,12 +111,13 @@
                               SelectionChanged="PendingGrid_SelectionChanged">
                         <DataGrid.Columns>
                             <DataGridTextColumn Header="ID" Binding="{Binding Id}" Width="65" />
-                            <DataGridTextColumn Header="ID Pracownika" Binding="{Binding UserId}" Width="95" />
-                            <DataGridTextColumn Header="Typ" Binding="{Binding LeaveType}" Width="120" />
-                            <DataGridTextColumn Header="Od" Binding="{Binding StartDate}" Width="110" />
-                            <DataGridTextColumn Header="Do" Binding="{Binding EndDate}" Width="110" />
-                            <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="110" />
-                            <DataGridTextColumn Header="Powód" Binding="{Binding Reason}" Width="*" />
+                            <DataGridTextColumn Header="Pracownik" Binding="{Binding UserName}" Width="150" />
+                            <DataGridTextColumn Header="Typ" Binding="{Binding LeaveTypePl}" Width="120" />
+                            <DataGridTextColumn Header="Od" Binding="{Binding StartDateOnly}" Width="110" />
+                            <DataGridTextColumn Header="Do" Binding="{Binding EndDateOnly}" Width="110" />
+                            <DataGridTextColumn Header="Status" Binding="{Binding StatusPl}" Width="110" />
+                            <DataGridTextColumn Header="Notatka pracownika" Binding="{Binding Reason}" Width="200" />
+                            <DataGridTextColumn Header="Komentarz szefa" Binding="{Binding ManagerComment}" Width="*" />
                         </DataGrid.Columns>
                     </DataGrid>
 
@@ -129,6 +130,8 @@
                         <Button x:Name="RefreshPendingButton" Content="Odśwież" Width="110" Click="RefreshPendingButton_Click" />
                         <Button x:Name="ApproveButton" Content="Akceptuj" Width="110" Margin="10,0,0,0" Click="ApproveButton_Click" />
                         <Button x:Name="RejectButton" Content="Odrzuć" Width="110" Margin="10,0,0,0" Click="RejectButton_Click" />
+                        <Button x:Name="SaveCommentButton" Content="Zapisz komentarz" Width="130" Margin="10,0,0,0" Click="SaveCommentButton_Click" />
+                        <Button x:Name="DeleteLeaveButton" Content="Usuń" Width="110" Margin="10,0,0,0" Click="DeleteLeaveButton_Click" />
                     </StackPanel>
                 </Grid>
             </TabItem>
@@ -149,7 +152,8 @@
                               SelectionMode="Single"
                               IsReadOnly="True"
                               Margin="0,0,0,10"
-                              SelectionChanged="UsersGrid_SelectionChanged">
+                              SelectionChanged="UsersGrid_SelectionChanged"
+                              MouseDoubleClick="UsersGrid_MouseDoubleClick">
                         <DataGrid.Columns>
                             <DataGridTextColumn Header="ID" Binding="{Binding Id}" Width="65" />
                             <DataGridTextColumn Header="Imię" Binding="{Binding Name}" Width="220" />
@@ -184,35 +188,7 @@
                             <ComboBox Grid.Column="7" x:Name="NewUserRoleCombo" Margin="6,0,10,0" />
                         </Grid>
                     </Border>
-
-                    <Border Grid.Row="2" BorderBrush="#D0D0D0" BorderThickness="1" CornerRadius="6" Padding="8" Margin="0,0,0,8">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="60" />
-                                <ColumnDefinition Width="200" />
-                                <ColumnDefinition Width="50" />
-                                <ColumnDefinition Width="230" />
-                                <ColumnDefinition Width="50" />
-                                <ColumnDefinition Width="150" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-
-                            <TextBlock Grid.Column="0" Text="Edycja:" FontWeight="SemiBold" VerticalAlignment="Center" />
-                            
-                            <TextBlock Grid.Column="0" Text="Imię" VerticalAlignment="Center" Margin="55,0,0,0"/>
-                            <TextBox Grid.Column="1" x:Name="EditUserNameTextBox" Margin="6,0,10,0" />
-
-                            <TextBlock Grid.Column="2" Text="Email" VerticalAlignment="Center" />
-                            <TextBox Grid.Column="3" x:Name="EditUserEmailTextBox" Margin="6,0,10,0" />
-
-                            <TextBlock Grid.Column="4" Text="Hasło" VerticalAlignment="Center" />
-                            <TextBox Grid.Column="5" x:Name="EditUserPasswordTextBox" Margin="6,0,10,0" />
-
-                            <Button Grid.Column="6" x:Name="UpdateUserButton" Content="Zapisz zmiany" Width="100" HorizontalAlignment="Left" Click="UpdateUserButton_Click" />
-                        </Grid>
-                    </Border>
-
-                    <StackPanel Grid.Row="3" Orientation="Horizontal">
+                    <StackPanel Grid.Row="2" Orientation="Horizontal">
                         <Button x:Name="RefreshUsersButton" Content="Odśwież" Width="110" Click="RefreshUsersButton_Click" />
                         <Button x:Name="CreateUserButton" Content="Dodaj użytkownika" Width="150" Margin="10,0,0,0" Click="CreateUserButton_Click" />
                         <Button x:Name="DeleteUserButton" Content="Usuń użytkownika" Width="150" Margin="10,0,0,0" Click="DeleteUserButton_Click" />
@@ -287,8 +263,92 @@
                     </StackPanel>
                 </Grid>
             </TabItem>
-        </TabControl>
 
+            <TabItem Header="Wyjazdy służbowe">
+                <Grid Margin="10">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <DataGrid x:Name="WorkTripsGrid"
+                              Grid.Row="0"
+                              AutoGenerateColumns="False"
+                              CanUserAddRows="False"
+                              SelectionMode="Single"
+                              IsReadOnly="True"
+                              Margin="0,0,0,10">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="ID" Binding="{Binding Id}" Width="65" />
+                            <DataGridTextColumn Header="Pracownik" Binding="{Binding UserName}" Width="150" />
+                            <DataGridTextColumn Header="Data" Binding="{Binding TripDate}" Width="110" />
+                            <DataGridTextColumn Header="Od" Binding="{Binding StartTime}" Width="110" />
+                            <DataGridTextColumn Header="Do" Binding="{Binding EndTime}" Width="110" />
+                            <DataGridTextColumn Header="Cel" Binding="{Binding Destination}" Width="200" />
+                            <DataGridTextColumn Header="Status" Binding="{Binding StatusPl}" Width="110" />
+                            <DataGridTextColumn Header="Opis" Binding="{Binding Description}" Width="*" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+
+                    <Border Grid.Row="1" BorderBrush="#D0D0D0" BorderThickness="1" CornerRadius="6" Padding="8" Margin="0,0,0,8">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="80" />
+                                <ColumnDefinition Width="150" />
+                                <ColumnDefinition Width="60" />
+                                <ColumnDefinition Width="120" />
+                                <ColumnDefinition Width="60" />
+                                <ColumnDefinition Width="100" />
+                                <ColumnDefinition Width="60" />
+                                <ColumnDefinition Width="100" />
+                                <ColumnDefinition Width="60" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+
+                            <TextBlock Grid.Column="0" Text="Pracownik:" VerticalAlignment="Center" />
+                            <ComboBox Grid.Column="1" x:Name="WorkTripUserComboBox" DisplayMemberPath="Name" SelectedValuePath="Id" Margin="6,0,10,0" />
+
+                            <TextBlock Grid.Column="2" Text="Data:" VerticalAlignment="Center" />
+                            <DatePicker Grid.Column="3" x:Name="WorkTripDatePicker" Margin="6,0,10,0" />
+
+                            <TextBlock Grid.Column="4" Text="Od:" VerticalAlignment="Center" />
+                            <TextBox Grid.Column="5" x:Name="WorkTripStartTextBox" Margin="6,0,10,0" />
+                            
+                            <TextBlock Grid.Column="6" Text="Do:" VerticalAlignment="Center" />
+                            <TextBox Grid.Column="7" x:Name="WorkTripEndTextBox" Margin="6,0,10,0" />
+
+                            <TextBlock Grid.Column="8" Text="Cel:" VerticalAlignment="Center" />
+                            <TextBox Grid.Column="9" x:Name="WorkTripDestinationTextBox" Margin="6,0,10,0" />
+                        </Grid>
+                    </Border>
+                    
+                    <Border Grid.Row="2" BorderBrush="#D0D0D0" BorderThickness="1" CornerRadius="6" Padding="8" Margin="0,0,0,8">
+                         <Grid>
+                            <Grid.ColumnDefinitions>
+                               <ColumnDefinition Width="80" />
+                               <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Opis:" VerticalAlignment="Center" />
+                            <TextBox Grid.Column="1" x:Name="WorkTripDescriptionTextBox" Margin="6,0,10,0" />
+                        </Grid>
+                    </Border>
+                    
+                     <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,0,0,8">
+                        <TextBlock Text="Komentarz:" VerticalAlignment="Center" FontWeight="SemiBold" />
+                        <TextBox x:Name="WorkTripCommentTextBox" Width="500" Margin="12,0,0,0" />
+                    </StackPanel>
+
+                    <StackPanel Grid.Row="4" Orientation="Horizontal">
+                        <Button x:Name="RefreshWorkTripsButton" Content="Odśwież" Width="110" Click="RefreshWorkTripsButton_Click" />
+                        <Button x:Name="AddWorkTripButton" Content="Dodaj wyjazd" Width="120" Margin="10,0,0,0" Click="AddWorkTripButton_Click" />
+                        <Button x:Name="UpdateWorkTripButton" Content="Zapisz zmiany" Width="120" Margin="10,0,0,0" Click="UpdateWorkTripButton_Click" />
+                        <Button x:Name="ApproveWorkTripButton" Content="Akceptuj" Width="110" Margin="10,0,0,0" Click="ApproveWorkTripButton_Click" />
+                        <Button x:Name="RejectWorkTripButton" Content="Odrzuć" Width="110" Margin="10,0,0,0" Click="RejectWorkTripButton_Click" />
+                        <Button x:Name="DeleteWorkTripButton" Content="Usuń wyjazd" Width="120" Margin="10,0,0,0" Click="DeleteWorkTripButton_Click" />
+                    </StackPanel>
+                </Grid>
+            </TabItem>
+        </TabControl>
         <StatusBar Grid.Row="4" Margin="0,10,0,0">
             <StatusBarItem>
                 <TextBlock x:Name="StatusTextBlock" Text="Gotowy." />

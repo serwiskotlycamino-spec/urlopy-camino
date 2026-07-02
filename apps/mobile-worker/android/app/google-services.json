@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "244752491804",
+    "project_id": "urlopy-camino-56210",
+    "storage_bucket": "urlopy-camino-56210.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:244752491804:android:d9a2624afc36ba83d006d9",
+        "android_client_info": {
+          "package_name": "com.urlopy.worker"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBb_eSaWcdD_q2XMRoLloOisHOL18L5Dkg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

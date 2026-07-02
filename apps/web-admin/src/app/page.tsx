@@ -31,6 +31,20 @@ type LeaveRequest = {
   created_at: string;
 };
 
+type WorkTrip = {
+  id: number;
+  user_id: number;
+  user_name?: string;
+  trip_date: string;
+  start_time: string;
+  end_time: string;
+  destination: string | null;
+  description: string | null;
+  status: "PENDING" | "APPROVED" | "REJECTED" | "ADJUSTED";
+  manager_comment: string | null;
+  decision_at: string | null;
+};
+
 type MailSettings = {
   smtpHost: string;
   smtpPort: number;
@@ -75,6 +89,7 @@ export default function Home() {
   const [token, setToken] = useState<string | null>(null);
   const [refreshToken, setRefreshToken] = useState<string | null>(null);
   const [pending, setPending] = useState<LeaveRequest[]>([]);
+  const [pendingTrips, setPendingTrips] = useState<WorkTrip[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [mailSettings, setMailSettings] = useState<MailSettings>({
     smtpHost: "",
@@ -109,7 +124,9 @@ export default function Home() {
   const [mailBusy, setMailBusy] = useState(false);
   const [attachmentsByRequest, setAttachmentsByRequest] = useState<Record<number, Attachment[]>>({});
   const [busyId, setBusyId] = useState<number | null>(null);
+  const [tripBusyId, setTripBusyId] = useState<number | null>(null);
   const [uploadBusyId, setUploadBusyId] = useState<number | null>(null);
+  const [tripComment, setTripComment] = useState("");
   const [error, setError] = useState("");
 
   const canModerate = useMemo(() => user?.role === "MANAGER" || user?.role === "ADMIN", [user]);
@@ -120,6 +137,7 @@ export default function Home() {
     setToken(null);
     setRefreshToken(null);
     setPending([]);
+    setPendingTrips([]);
     setUsers([]);
     setSelectedEditUserId("");
     setEditUserName("");
@@ -134,6 +152,7 @@ export default function Home() {
     setImapPassInput("");
     setAttachmentsByRequest({});
     setComment("");
+    setTripComment("");
   }, []);
 
   async function login() {
@@ -159,8 +178,9 @@ export default function Home() {
       if (data.user.role === "MANAGER" || data.user.role === "ADMIN") {
         const authHeader = { Authorization: `Bearer ${data.accessToken}` };
 
-        const [pendingRes, usersRes, mailRes] = await Promise.all([
+        const [pendingRes, tripsRes, usersRes, mailRes] = await Promise.all([
           fetch(`${API_URL}/leave-requests/pending`, { headers: authHeader }),
+          fetch(`${API_URL}/work-trips/all`, { headers: authHeader }),
           fetch(`${API_URL}/auth/users`, { headers: authHeader }),
           fetch(`${API_URL}/auth/mail-settings`, { headers: authHeader }),
         ]);
@@ -173,6 +193,11 @@ export default function Home() {
         if (usersRes.ok) {
           const rows = (await usersRes.json()) as User[];
           setUsers(rows);
+        }
+
+        if (tripsRes.ok) {
+          const rows = (await tripsRes.json()) as WorkTrip[];
+          setPendingTrips(rows.filter((trip) => trip.status === "PENDING"));
         }
 
         if (mailRes.ok) {
@@ -286,6 +311,24 @@ export default function Home() {
     );
   }, [authFetch, user, canModerate]);
 
+  const loadPendingTrips = useCallback(async () => {
+    if (!user || !canModerate) {
+      return;
+    }
+
+    const res = await authFetch(`${API_URL}/work-trips/all`);
+    if (!res) {
+      return;
+    }
+    if (!res.ok) {
+      setError("Nie mozna pobrac godzin wyjazdowych.");
+      return;
+    }
+
+    const rows = (await res.json()) as WorkTrip[];
+    setPendingTrips(rows.filter((trip) => trip.status === "PENDING"));
+  }, [authFetch, user, canModerate]);
+
   async function uploadAttachment(requestId: number, file: File) {
     setError("");
     setUploadBusyId(requestId);
@@ -365,6 +408,36 @@ export default function Home() {
 
     setComment("");
     await loadPending();
+  }
+
+  async function decideTrip(id: number, decision: "APPROVED" | "REJECTED") {
+    if (!user || !token) {
+      return;
+    }
+
+    setTripBusyId(id);
+    setError("");
+
+    const res = await authFetch(`${API_URL}/work-trips/${id}/review`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        decision,
+        comment: tripComment.trim() || undefined,
+      }),
+    });
+
+    setTripBusyId(null);
+
+    if (!res || !res.ok) {
+      setError("Nie udalo sie zapisac decyzji dla godzin wyjazdowych.");
+      return;
+    }
+
+    setTripComment("");
+    await loadPendingTrips();
   }
 
   async function createUser() {
@@ -654,6 +727,7 @@ export default function Home() {
     source.onmessage = () => {
       if (canModerate) {
         void loadPending();
+        void loadPendingTrips();
       }
     };
 
@@ -664,7 +738,15 @@ export default function Home() {
     return () => {
       source.close();
     };
-  }, [user, canModerate, loadPending, token]);
+  }, [user, canModerate, loadPending, loadPendingTrips, token]);
+
+  useEffect(() => {
+    if (!user || !canModerate) {
+      return;
+    }
+
+    void loadPendingTrips();
+  }, [user, canModerate, loadPendingTrips]);
 
   const managerOptions = users.filter((item) => item.role === "MANAGER" || item.role === "ADMIN");
 
@@ -806,6 +888,55 @@ export default function Home() {
                       <li className="text-slate-500">Brak zalacznikow.</li>
                     )}
                   </ul>
+                </div>
+              </article>
+            ))}
+          </section>
+        )}
+
+        {user && canModerate && (
+          <section className="space-y-3 rounded-xl bg-white p-5 shadow">
+            <h2 className="text-lg font-semibold">Godziny wyjazdowe oczekujace</h2>
+            <textarea
+              className="w-full rounded border border-slate-300 p-2"
+              value={tripComment}
+              placeholder="Komentarz do decyzji (opcjonalny)"
+              onChange={(e) => setTripComment(e.target.value)}
+            />
+
+            {pendingTrips.length === 0 && <p>Brak oczekujacych godzin wyjazdowych.</p>}
+
+            {pendingTrips.map((trip) => (
+              <article key={trip.id} className="rounded border border-slate-200 p-4">
+                <p className="font-semibold">Wyjazd #{trip.id}</p>
+                <p>
+                  Pracownik: {trip.user_name ?? `ID ${trip.user_id}`} | Data: {trip.trip_date.slice(0, 10)}
+                </p>
+                <p>
+                  Godziny: {trip.start_time.slice(0, 5)} - {trip.end_time.slice(0, 5)}
+                </p>
+                <p>Miejsce: {trip.destination || "-"}</p>
+                <p>Opis: {trip.description || "-"}</p>
+
+                <div className="mt-3 flex gap-2">
+                  <button
+                    disabled={tripBusyId === trip.id}
+                    className="rounded bg-emerald-600 px-3 py-2 text-white disabled:opacity-50"
+                    onClick={() => {
+                      void decideTrip(trip.id, "APPROVED");
+                    }}
+                  >
+                    Zatwierdz
+                  </button>
+                  <button
+                    disabled={tripBusyId === trip.id}
+                    className="rounded bg-rose-600 px-3 py-2 text-white disabled:opacity-50"
+                    onClick={() => {
+                      void decideTrip(trip.id, "REJECTED");
+                    }}
+                  >
+                    Odrzuc
+                  </button>
                 </div>
               </article>
             ))}

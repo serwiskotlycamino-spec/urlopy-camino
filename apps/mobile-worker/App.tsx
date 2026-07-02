@@ -2,8 +2,11 @@ import { StatusBar } from 'expo-status-bar';
 import * as Notifications from 'expo-notifications';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
+import EventSource from 'react-native-sse';
 import {
   ActivityIndicator,
+  AppState,
+  Platform,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -26,6 +29,7 @@ type LeaveRequest = {
   leaveType: 'ANNUAL' | 'ON_DEMAND' | 'SICK' | 'UNPAID' | 'OTHER';
   startDate: string;
   endDate: string;
+  updatedAt?: string;
   reason?: string | null;
   status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
   managerComment?: string | null;
@@ -38,6 +42,9 @@ type WorkTrip = {
   end_time: string;
   destination: string | null;
   description: string | null;
+  status?: 'PENDING' | 'APPROVED' | 'REJECTED' | 'ADJUSTED';
+  manager_comment?: string | null;
+  decision_at?: string | null;
   created_at: string;
 };
 
@@ -47,6 +54,15 @@ type AppNotification = {
   message: string;
   status: string;
   created_at: string;
+};
+
+type ApiNotification = {
+  id: number;
+  event: string;
+  message: string;
+  status: string;
+  created_at?: string;
+  createdAt?: string;
 };
 
 type LeaveLimit = {
@@ -60,6 +76,7 @@ type LeaveLimit = {
 type PendingItem = {
   id: number;
   user_id: number;
+  user_name?: string;
   leave_type: string;
   start_date: string;
   end_date: string;
@@ -70,6 +87,7 @@ type PendingItem = {
 
 type ActiveTab = 'requests' | 'trips' | 'notifications' | 'admin';
 type AdminSubTab = 'all-requests' | 'all-limits' | 'all-trips' | 'all-users';
+type HistoryRange = 'ALL' | 'MONTH' | 'YEAR';
 type UserPickItem = { id: number; name: string; role: string; email: string };
 type EmployeeLeaveSummary = {
   userId: number; name: string; email: string;
@@ -79,6 +97,9 @@ type WorkTripAdmin = {
   id: number; user_id: number; user_name: string | null;
   trip_date: string; start_time: string; end_time: string;
   destination: string | null; description: string | null;
+  status?: 'PENDING' | 'APPROVED' | 'REJECTED' | 'ADJUSTED';
+  manager_comment?: string | null;
+  decision_at?: string | null;
 };
 
 const DEFAULT_LOGIN_USERS: UserPickItem[] = [
@@ -94,6 +115,7 @@ type ApiLeaveRequest = {
   startDate?: string;
   end_date?: string;
   endDate?: string;
+  updated_at?: string;
   reason?: string | null;
   status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
   manager_comment?: string | null;
@@ -112,6 +134,7 @@ const STATUS_META: Record<string, { label: string; background: string; color: st
   REJECTED:  { label: 'ODRZUCONY',    background: '#fee2e2', color: '#b91c1c' },
   PENDING:   { label: 'PRZETWARZANY', background: '#ffedd5', color: '#c2410c' },
   CANCELLED: { label: 'ANULOWANY',    background: '#f1f5f9', color: '#475569' },
+  ADJUSTED:  { label: 'SKORYGOWANY',  background: '#dbeafe', color: '#1d4ed8' },
 };
 
 const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
@@ -141,6 +164,16 @@ function leaveTypeLabel(value: LeaveRequest['leaveType']): string {
   return found?.label ?? value;
 }
 
+function roleLabel(value: string): string {
+  if (value === 'ADMIN') {
+    return 'Administrator';
+  }
+  if (value === 'EMPLOYEE') {
+    return 'Pracownik';
+  }
+  return value;
+}
+
 function normalizeApiDate(value?: string): string {
   if (!value) {
     return '';
@@ -154,6 +187,45 @@ function normalizeApiDate(value?: string): string {
   return value;
 }
 
+function parseIsoDateToUtc(value: string): Date {
+  const [year, month, day] = value.split('-').map(Number);
+  return new Date(Date.UTC(year, (month || 1) - 1, day || 1));
+}
+
+function daysInclusive(start: string, end: string): number {
+  if (!DATE_REGEX.test(start) || !DATE_REGEX.test(end)) {
+    return 0;
+  }
+
+  const ms = parseIsoDateToUtc(end).getTime() - parseIsoDateToUtc(start).getTime();
+  if (ms < 0) {
+    return 0;
+  }
+
+  return Math.floor(ms / 86400000) + 1;
+}
+
+function isInHistoryRange(dateIso: string, range: HistoryRange): boolean {
+  if (!DATE_REGEX.test(dateIso)) {
+    return range === 'ALL';
+  }
+
+  if (range === 'ALL') {
+    return true;
+  }
+
+  const now = new Date();
+  const [yearStr, monthStr] = dateIso.split('-');
+  const year = Number(yearStr);
+  const month = Number(monthStr);
+
+  if (range === 'YEAR') {
+    return year === now.getFullYear();
+  }
+
+  return year === now.getFullYear() && month === now.getMonth() + 1;
+}
+
 function mapApiLeaveRequest(row: ApiLeaveRequest): LeaveRequest {
   const leaveType = row.leave_type ?? row.leaveType ?? 'ANNUAL';
   const startDate = normalizeApiDate(row.start_date ?? row.startDate);
@@ -164,6 +236,7 @@ function mapApiLeaveRequest(row: ApiLeaveRequest): LeaveRequest {
     leaveType,
     startDate,
     endDate,
+    updatedAt: row.updated_at,
     reason: row.reason ?? null,
     status: row.status,
     managerComment: row.manager_comment ?? null,
@@ -180,6 +253,8 @@ const CLOUD_API_URL = (
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
+    shouldShowBanner: true,
+    shouldShowList: true,
     shouldPlaySound: true,
     shouldSetBadge: true,
   }),
@@ -196,9 +271,13 @@ export default function App() {
   const [requests, setRequests] = useState<LeaveRequest[]>([]);
   const [busy, setBusy] = useState(false);
   const [submitBusy, setSubmitBusy] = useState(false);
+  const [requestEditId, setRequestEditId] = useState<number | null>(null);
+  const [requestEditUpdatedAt, setRequestEditUpdatedAt] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [showSentHistory, setShowSentHistory] = useState(false);
   const [showApprovedHistory, setShowApprovedHistory] = useState(false);
+  const [showRejectedHistory, setShowRejectedHistory] = useState(false);
+  const [requestHistoryRange, setRequestHistoryRange] = useState<HistoryRange>('ALL');
   const [leaveType, setLeaveType] = useState<(typeof LEAVE_TYPES)[number]['value']>('ANNUAL');
   const [startDate, setStartDate] = useState(toIsoDate(new Date()));
   const [endDate, setEndDate] = useState(toIsoDate(new Date()));
@@ -214,6 +293,13 @@ export default function App() {
   const [tripDestination, setTripDestination] = useState('');
   const [tripDescription, setTripDescription] = useState('');
   const [tripBusy, setTripBusy] = useState(false);
+  const [tripEditId, setTripEditId] = useState<number | null>(null);
+  const [tripEditStartTime, setTripEditStartTime] = useState('08:00');
+  const [tripEditEndTime, setTripEditEndTime] = useState('16:00');
+  const [tripEditDestination, setTripEditDestination] = useState('');
+  const [tripEditDescription, setTripEditDescription] = useState('');
+  const [tripEditBusy, setTripEditBusy] = useState(false);
+  const [tripHistoryRange, setTripHistoryRange] = useState<HistoryRange>('ALL');
   const [decisionComment, setDecisionComment] = useState('');
   const [decisionBusy, setDecisionBusy] = useState(false);
   const [adminSubTab, setAdminSubTab] = useState<AdminSubTab>('all-requests');
@@ -221,12 +307,20 @@ export default function App() {
   const [allTrips, setAllTrips] = useState<WorkTripAdmin[]>([]);
   const [allUsersList, setAllUsersList] = useState<UserPickItem[]>([]);
   const [editLimitUserId, setEditLimitUserId] = useState('');
+  const [selectedLimitUserId, setSelectedLimitUserId] = useState<number | null>(null);
   const [editLimitDays, setEditLimitDays] = useState('26');
   const [limitBusy, setLimitBusy] = useState(false);
   const [newUserName, setNewUserName] = useState('');
   const [newUserEmail, setNewUserEmail] = useState('');
+  const [newUserPassword, setNewUserPassword] = useState('12345678');
   const [newUserRole, setNewUserRole] = useState<'EMPLOYEE' | 'ADMIN'>('EMPLOYEE');
   const [newUserBusy, setNewUserBusy] = useState(false);
+  const [editingUserId, setEditingUserId] = useState<number | null>(null);
+  const [adminTripReviewId, setAdminTripReviewId] = useState<number | null>(null);
+  const [adminTripStartTime, setAdminTripStartTime] = useState('08:00');
+  const [adminTripEndTime, setAdminTripEndTime] = useState('16:00');
+  const [adminTripComment, setAdminTripComment] = useState('');
+  const [adminTripBusy, setAdminTripBusy] = useState(false);
 
   const apiUrl = CLOUD_API_URL;
 
@@ -234,6 +328,30 @@ export default function App() {
   const approvedRequests = useMemo(
     () => requests.filter((request) => request.status === 'APPROVED'),
     [requests],
+  );
+  const rejectedRequests = useMemo(
+    () => requests.filter((request) => request.status === 'REJECTED'),
+    [requests],
+  );
+  const filteredSentRequests = useMemo(
+    () => sentRequests.filter((request) => isInHistoryRange(request.startDate, requestHistoryRange)),
+    [requestHistoryRange, sentRequests],
+  );
+  const filteredApprovedRequests = useMemo(
+    () => approvedRequests.filter((request) => isInHistoryRange(request.startDate, requestHistoryRange)),
+    [approvedRequests, requestHistoryRange],
+  );
+  const filteredRejectedRequests = useMemo(
+    () => rejectedRequests.filter((request) => isInHistoryRange(request.startDate, requestHistoryRange)),
+    [rejectedRequests, requestHistoryRange],
+  );
+  const filteredWorkTrips = useMemo(
+    () => workTrips.filter((trip) => isInHistoryRange(trip.trip_date.slice(0, 10), tripHistoryRange)),
+    [tripHistoryRange, workTrips],
+  );
+  const employeeUsers = useMemo(
+    () => allUsersList.filter((entry) => entry.role === 'EMPLOYEE'),
+    [allUsersList],
   );
 
   const approvedHistoryStats = useMemo(() => {
@@ -254,6 +372,32 @@ export default function App() {
       counts,
     };
   }, [approvedRequests]);
+
+  const onDemandStats = useMemo(() => {
+    const year = new Date().getFullYear();
+    const yearRequests = requests.filter((request) => {
+      if (request.leaveType !== 'ON_DEMAND') {
+        return false;
+      }
+      const sourceDate = request.startDate || request.endDate;
+      return DATE_REGEX.test(sourceDate) && Number(sourceDate.slice(0, 4)) === year;
+    });
+
+    const approvedDays = yearRequests
+      .filter((request) => request.status === 'APPROVED')
+      .reduce((sum, request) => sum + daysInclusive(request.startDate, request.endDate), 0);
+
+    const pendingDays = yearRequests
+      .filter((request) => request.status === 'PENDING')
+      .reduce((sum, request) => sum + daysInclusive(request.startDate, request.endDate), 0);
+
+    return {
+      year,
+      approvedDays,
+      pendingDays,
+      remainingDays: Math.max(0, 4 - approvedDays),
+    };
+  }, [requests]);
 
   const requestsTitle = 'Moje wnioski';
 
@@ -299,6 +443,7 @@ export default function App() {
       setUser(data.user);
       setToken(data.accessToken);
       setRefreshToken(data.refreshToken);
+      setActiveTab(data.user.role === 'ADMIN' ? 'admin' : 'requests');
       setError('');
       void registerPushToken(data.accessToken);
     } catch {
@@ -403,8 +548,16 @@ export default function App() {
     if (!user) return;
     const res = await authFetch(`${apiUrl}/notifications/mine`);
     if (!res || !res.ok) return;
-    const data = (await res.json()) as AppNotification[];
-    setNotifications(data);
+    const data = (await res.json()) as ApiNotification[];
+    setNotifications(
+      data.map((item) => ({
+        id: item.id,
+        event: item.event,
+        message: item.message,
+        status: item.status,
+        created_at: item.created_at ?? item.createdAt ?? '',
+      })),
+    );
   }, [apiUrl, authFetch, user]);
 
   const loadPending = useCallback(async () => {
@@ -450,8 +603,27 @@ export default function App() {
     setAllTrips((await res.json()) as WorkTripAdmin[]);
   }, [apiUrl, authFetch]);
 
+  const refreshSessionData = useCallback(async () => {
+    if (!user) {
+      return;
+    }
+
+    const tasks: Promise<unknown>[] = [
+      loadMyRequests(),
+      loadWorkTrips(),
+      loadNotifications(),
+      loadLeaveLimit(),
+    ];
+
+    if (user.role === 'ADMIN') {
+      tasks.push(loadPending(), loadAllUsers(), loadAllLimits(), loadAllTrips());
+    }
+
+    await Promise.all(tasks);
+  }, [loadAllLimits, loadAllTrips, loadAllUsers, loadLeaveLimit, loadMyRequests, loadNotifications, loadPending, loadWorkTrips, user]);
+
   const setLimitForUser = useCallback(async () => {
-    const uid = Number(editLimitUserId);
+    const uid = selectedLimitUserId ?? Number(editLimitUserId);
     const days = Number(editLimitDays);
     if (!uid || Number.isNaN(days) || days < 0) { setError('Nieprawidlowe dane limitu.'); return; }
     setLimitBusy(true);
@@ -463,23 +635,119 @@ export default function App() {
     setLimitBusy(false);
     if (!res || !res.ok) { setError('Blad zapisu limitu.'); return; }
     await loadAllLimits();
-  }, [apiUrl, authFetch, editLimitUserId, editLimitDays, loadAllLimits]);
+  }, [apiUrl, authFetch, selectedLimitUserId, editLimitUserId, editLimitDays, loadAllLimits]);
 
   const createNewUser = useCallback(async () => {
     if (!newUserName.trim() || !newUserEmail.trim()) { setError('Podaj imie i email.'); return; }
     setNewUserBusy(true);
-    const res = await authFetch(`${apiUrl}/auth/users`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: newUserName.trim(), email: newUserEmail.trim(), password: '12345678', role: newUserRole }),
-    });
+    const normalizedName = newUserName.trim();
+    const normalizedEmail = newUserEmail.trim();
+    const normalizedPassword = newUserPassword.trim();
+    const roleChanged = editingUserId
+      ? allUsersList.find((entry) => entry.id === editingUserId)?.role !== newUserRole
+      : false;
+
+    const res = editingUserId
+      ? await authFetch(`${apiUrl}/auth/users/${editingUserId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: normalizedName,
+            email: normalizedEmail,
+            password: normalizedPassword.length > 0 ? normalizedPassword : undefined,
+          }),
+        })
+      : await authFetch(`${apiUrl}/auth/users`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: normalizedName, email: normalizedEmail, password: normalizedPassword || '12345678', role: newUserRole }),
+        });
     setNewUserBusy(false);
-    if (!res || !res.ok) { setError('Blad tworzenia uzytkownika.'); return; }
+    if (!res || !res.ok) { setError(editingUserId ? 'Blad edycji uzytkownika.' : 'Blad tworzenia uzytkownika.'); return; }
+
+    if (editingUserId && roleChanged) {
+      const roleRes = await authFetch(`${apiUrl}/auth/users/${editingUserId}/role`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role: newUserRole }),
+      });
+      if (!roleRes || !roleRes.ok) {
+        setError('Zmieniono dane, ale nie udalo sie zaktualizowac roli.');
+      }
+    }
+
     setNewUserName('');
     setNewUserEmail('');
+    setNewUserPassword('12345678');
+    setNewUserRole('EMPLOYEE');
+    setEditingUserId(null);
     await loadAllUsers();
     await loadLoginUsers();
-  }, [apiUrl, authFetch, newUserName, newUserEmail, newUserRole, loadAllUsers, loadLoginUsers]);
+  }, [apiUrl, authFetch, editingUserId, allUsersList, newUserName, newUserEmail, newUserPassword, newUserRole, loadAllUsers, loadLoginUsers]);
+
+  const beginEditUser = useCallback((target: UserPickItem) => {
+    setEditingUserId(target.id);
+    setNewUserName(target.name);
+    setNewUserEmail(target.email);
+    setNewUserPassword('');
+    setNewUserRole(target.role === 'ADMIN' ? 'ADMIN' : 'EMPLOYEE');
+    setError('');
+  }, []);
+
+  const cancelEditUser = useCallback(() => {
+    setEditingUserId(null);
+    setNewUserName('');
+    setNewUserEmail('');
+    setNewUserPassword('12345678');
+    setNewUserRole('EMPLOYEE');
+  }, []);
+
+  const deleteUser = useCallback(async (userId: number) => {
+    const res = await authFetch(`${apiUrl}/auth/users/${userId}`, { method: 'DELETE' });
+    if (!res || !res.ok) {
+      setError('Nie udalo sie usunac uzytkownika.');
+      return;
+    }
+    await loadAllUsers();
+    await loadLoginUsers();
+  }, [apiUrl, authFetch, loadAllUsers, loadLoginUsers]);
+
+  const beginReviewTrip = useCallback((trip: WorkTripAdmin) => {
+    setAdminTripReviewId(trip.id);
+    setAdminTripStartTime((trip.start_time ?? '08:00').slice(0, 5));
+    setAdminTripEndTime((trip.end_time ?? '16:00').slice(0, 5));
+    setAdminTripComment(trip.manager_comment ?? '');
+    setError('');
+  }, []);
+
+  const cancelReviewTrip = useCallback(() => {
+    setAdminTripReviewId(null);
+    setAdminTripComment('');
+  }, []);
+
+  const reviewTrip = useCallback(async (decision: 'APPROVED' | 'REJECTED' | 'ADJUSTED') => {
+    if (!adminTripReviewId) {
+      return;
+    }
+    setAdminTripBusy(true);
+    const res = await authFetch(`${apiUrl}/work-trips/${adminTripReviewId}/review`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        decision,
+        startTime: decision === 'ADJUSTED' ? adminTripStartTime : undefined,
+        endTime: decision === 'ADJUSTED' ? adminTripEndTime : undefined,
+        comment: adminTripComment.trim() || undefined,
+      }),
+    });
+    setAdminTripBusy(false);
+    if (!res || !res.ok) {
+      setError('Nie udalo sie zapisac decyzji dla godzin wyjazdowych.');
+      return;
+    }
+    cancelReviewTrip();
+    await loadAllTrips();
+  }, [adminTripComment, adminTripEndTime, adminTripReviewId, adminTripStartTime, apiUrl, authFetch, cancelReviewTrip, loadAllTrips]);
 
   const cancelRequest = useCallback(async (requestId: number) => {
     const res = await authFetch(`${apiUrl}/leave-requests/${requestId}`, { method: 'DELETE' });
@@ -492,10 +760,38 @@ export default function App() {
 
   }, [apiUrl, authFetch, loadMyRequests]);
 
+  const beginEditRequest = useCallback((item: LeaveRequest) => {
+    setRequestEditId(item.id);
+    setRequestEditUpdatedAt(item.updatedAt ?? null);
+    setLeaveType(item.leaveType);
+    setStartDate(item.startDate);
+    setEndDate(item.endDate);
+    setReason(item.reason ?? '');
+    setError('');
+  }, []);
+
+  const cancelEditRequest = useCallback(() => {
+    setRequestEditId(null);
+    setRequestEditUpdatedAt(null);
+    setLeaveType('ANNUAL');
+    setStartDate(toIsoDate(new Date()));
+    setEndDate(toIsoDate(new Date()));
+    setReason('');
+  }, []);
+
   const notifListenerRef = useRef<ReturnType<typeof Notifications.addNotificationReceivedListener> | null>(null);
+  const realtimeRef = useRef<EventSource | null>(null);
 
   const registerPushToken = useCallback(async (accessToken: string): Promise<void> => {
     try {
+      if (Platform.OS === 'android') {
+        await Notifications.setNotificationChannelAsync('default', {
+          name: 'Powiadomienia',
+          importance: Notifications.AndroidImportance.MAX,
+          vibrationPattern: [0, 250, 250, 250],
+          lightColor: '#0f172a',
+        });
+      }
       const { status } = await Notifications.requestPermissionsAsync();
       if (status !== 'granted') return;
       const { data: fcmToken } = await Notifications.getDevicePushTokenAsync();
@@ -559,6 +855,63 @@ export default function App() {
     setTripBusy(false);
   }, [apiUrl, authFetch, user, tripDate, tripStartTime, tripEndTime, tripDestination, tripDescription, loadWorkTrips]);
 
+  const beginEditTripHours = useCallback((trip: WorkTrip) => {
+    setTripEditId(trip.id);
+    setTripEditStartTime(trip.start_time.slice(0, 5));
+    setTripEditEndTime(trip.end_time.slice(0, 5));
+    setTripEditDestination(trip.destination ?? '');
+    setTripEditDescription(trip.description ?? '');
+    setError('');
+  }, []);
+
+  const cancelEditTripHours = useCallback(() => {
+    setTripEditId(null);
+    setTripEditDestination('');
+    setTripEditDescription('');
+  }, []);
+
+  const saveTripHours = useCallback(async () => {
+    if (!tripEditId) {
+      return;
+    }
+    if (tripEditEndTime <= tripEditStartTime) {
+      setError('Godzina zakonczenia musi byc pozniejsza niz rozpoczecia.');
+      return;
+    }
+
+    setTripEditBusy(true);
+    const res = await authFetch(`${apiUrl}/work-trips/${tripEditId}/hours`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        startTime: tripEditStartTime,
+        endTime: tripEditEndTime,
+        destination: tripEditDestination,
+        description: tripEditDescription,
+      }),
+    });
+    setTripEditBusy(false);
+
+    if (!res || !res.ok) {
+      setError('Nie udalo sie zapisac zmian godzin wyjazdu.');
+      return;
+    }
+
+    setTripEditId(null);
+    setTripEditDestination('');
+    setTripEditDescription('');
+    await loadWorkTrips();
+  }, [
+    apiUrl,
+    authFetch,
+    loadWorkTrips,
+    tripEditDescription,
+    tripEditDestination,
+    tripEditEndTime,
+    tripEditId,
+    tripEditStartTime,
+  ]);
+
   async function submitRequest() {
     if (!user || user.role !== 'EMPLOYEE') {
       return;
@@ -567,19 +920,37 @@ export default function App() {
     setError('');
 
     if (!DATE_REGEX.test(startDate) || !DATE_REGEX.test(endDate)) {
-      setError('Nieprawidłowy format daty.');
+      setError('Nieprawidlowy format daty.');
       return;
     }
 
+    if (leaveType === 'ON_DEMAND') {
+      const requestedDays = daysInclusive(startDate, endDate);
+      if (requestedDays <= 0) {
+        setError('Nieprawidlowy zakres dat dla urlopu na zadanie.');
+        return;
+      }
+
+      if (onDemandStats.approvedDays + onDemandStats.pendingDays + requestedDays > 4) {
+        setError(`Limit urlopu na zadanie to 4 dni/rok. Wykorzystane i oczekujace: ${onDemandStats.approvedDays + onDemandStats.pendingDays}.`);
+        return;
+      }
+    }
+
     setSubmitBusy(true);
-    const res = await authFetch(`${apiUrl}/leave-requests`, {
-      method: 'POST',
+    const targetUrl = requestEditId
+      ? `${apiUrl}/leave-requests/${requestEditId}`
+      : `${apiUrl}/leave-requests`;
+
+    const res = await authFetch(targetUrl, {
+      method: requestEditId ? 'PATCH' : 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         leaveType,
         startDate,
         endDate,
         reason: reason.trim() ? reason.trim() : undefined,
+        expectedUpdatedAt: requestEditId ? requestEditUpdatedAt ?? undefined : undefined,
       }),
     });
 
@@ -589,7 +960,9 @@ export default function App() {
     }
 
     if (!res.ok) {
-      let message = 'Nie udało się wysłać wniosku.';
+      let message = requestEditId
+        ? 'Nie udalo sie zapisac zmian wniosku.'
+        : 'Nie udalo sie wyslac wniosku.';
       try {
         const payload = (await res.json()) as { message?: string | string[] };
         if (Array.isArray(payload.message)) {
@@ -602,13 +975,14 @@ export default function App() {
       }
 
       setError(message);
+      if (message.toLowerCase().includes('odswiez')) {
+        await loadMyRequests();
+      }
       setSubmitBusy(false);
       return;
     }
 
-      setStartDate(toIsoDate(new Date()));
-      setEndDate(toIsoDate(new Date()));
-    setReason('');
+    cancelEditRequest();
     await loadMyRequests();
     setSubmitBusy(false);
   }
@@ -638,7 +1012,7 @@ export default function App() {
         }
 
         if (new Date(nextIso).getTime() < new Date(startDate).getTime()) {
-          setError('Data zakończenia nie może być wcześniejsza od daty rozpoczęcia.');
+          setError('Data zakonczenia nie moze byc wczesniejsza od daty rozpoczecia.');
           return;
         }
 
@@ -662,6 +1036,44 @@ export default function App() {
         const mm = String(pickedDate.getMinutes()).padStart(2, '0');
         if (field === 'start') setTripStartTime(`${hh}:${mm}`);
         else setTripEndTime(`${hh}:${mm}`);
+      },
+    });
+  }
+
+  function openTripEditTimePicker(field: 'start' | 'end') {
+    const currentVal = field === 'start' ? tripEditStartTime : tripEditEndTime;
+    const [h, m] = currentVal.split(':').map(Number);
+    const base = new Date();
+    base.setHours(h ?? 8, m ?? 0, 0, 0);
+    DateTimePickerAndroid.open({
+      value: base,
+      mode: 'time',
+      is24Hour: true,
+      onChange: (_, pickedDate) => {
+        if (!pickedDate) return;
+        const hh = String(pickedDate.getHours()).padStart(2, '0');
+        const mm = String(pickedDate.getMinutes()).padStart(2, '0');
+        if (field === 'start') setTripEditStartTime(`${hh}:${mm}`);
+        else setTripEditEndTime(`${hh}:${mm}`);
+      },
+    });
+  }
+
+  function openAdminTripTimePicker(field: 'start' | 'end') {
+    const currentVal = field === 'start' ? adminTripStartTime : adminTripEndTime;
+    const [h, m] = currentVal.split(':').map(Number);
+    const base = new Date();
+    base.setHours(h ?? 8, m ?? 0, 0, 0);
+    DateTimePickerAndroid.open({
+      value: base,
+      mode: 'time',
+      is24Hour: true,
+      onChange: (_, pickedDate) => {
+        if (!pickedDate) return;
+        const hh = String(pickedDate.getHours()).padStart(2, '0');
+        const mm = String(pickedDate.getMinutes()).padStart(2, '0');
+        if (field === 'start') setAdminTripStartTime(`${hh}:${mm}`);
+        else setAdminTripEndTime(`${hh}:${mm}`);
       },
     });
   }
@@ -697,34 +1109,91 @@ export default function App() {
       return;
     }
 
-    void loadMyRequests();
-    void loadWorkTrips();
-    void loadNotifications();
-    void loadLeaveLimit();
-    if (user.role === 'ADMIN') {
-      void loadPending();
-    }
-    if (user.role === 'ADMIN') {
-      void loadAllUsers();
-      void loadAllLimits();
-      void loadAllTrips();
-    }
-  }, [loadMyRequests, loadWorkTrips, loadNotifications, loadLeaveLimit, loadPending, loadAllUsers, loadAllLimits, loadAllTrips, user]);
+    void refreshSessionData();
+  }, [refreshSessionData, user]);
 
   useEffect(() => {
     // Odbierz powiadomienie gdy aplikacja jest na pierwszym planie
     notifListenerRef.current = Notifications.addNotificationReceivedListener(() => {
-      void loadNotifications();
+      void refreshSessionData();
     });
-    // Kliknięcie w powiadomienie otwiera zakładkę powiadomień
+    // Klikniecie w powiadomienie otwiera zakladke powiadomien.
     const tapSub = Notifications.addNotificationResponseReceivedListener(() => {
       setActiveTab('notifications');
+      void refreshSessionData();
     });
     return () => {
       notifListenerRef.current?.remove();
       tapSub.remove();
     };
-  }, [loadNotifications]);
+  }, [refreshSessionData]);
+
+  useEffect(() => {
+    if (!user || !token) {
+      realtimeRef.current?.close();
+      realtimeRef.current = null;
+      return;
+    }
+
+    const source = new EventSource(`${apiUrl}/realtime/stream?token=${encodeURIComponent(token)}`, {
+      pollingInterval: 5000,
+      timeout: 60000,
+    });
+
+    realtimeRef.current = source;
+    const refreshFromRealtime = () => {
+      void refreshSessionData();
+    };
+
+    const realtimeEvents = [
+      'leave.request.created',
+      'leave.request.approved',
+      'leave.request.rejected',
+      'leave.request.cancelled',
+      'work.trip.created',
+      'work.trip.approved',
+      'work.trip.rejected',
+      'work.trip.adjusted',
+    ];
+
+    for (const eventName of realtimeEvents) {
+      source.addEventListener(eventName, refreshFromRealtime);
+    }
+
+    return () => {
+      source.close();
+      realtimeRef.current = null;
+    };
+  }, [apiUrl, refreshSessionData, token, user]);
+
+  useEffect(() => {
+    if (!token) {
+      return;
+    }
+
+    void registerPushToken(token);
+  }, [registerPushToken, token]);
+
+  useEffect(() => {
+    if (!user) {
+      return;
+    }
+
+    const intervalId = setInterval(() => {
+      void refreshSessionData();
+    }, 5000);
+
+    const appStateSub = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        void refreshSessionData();
+      }
+    });
+
+    return () => {
+      clearInterval(intervalId);
+      appStateSub.remove();
+    };
+  }, [refreshSessionData, user]);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -754,9 +1223,9 @@ export default function App() {
                     <Text style={[styles.userPickName, selectedUserId === u.id ? styles.userPickNameSelected : null]}>
                       {u.name}
                     </Text>
-                    <Text style={styles.userPickRole}>{u.role}</Text>
+                    <Text style={styles.userPickRole}>{roleLabel(u.role)}</Text>
                   </View>
-                  {selectedUserId === u.id ? <Text style={styles.userPickCheck}>✓</Text> : null}
+                  {selectedUserId === u.id ? <Text style={styles.userPickCheck}>OK</Text> : null}
                 </TouchableOpacity>
               ))}
             </ScrollView>
@@ -793,6 +1262,9 @@ export default function App() {
               <View style={styles.limitBanner}>
                 <Text style={styles.limitBannerText}>
                   Pozostalo dni urlopu: {leaveLimit.remainingDays} / {leaveLimit.annualDays} (rok {leaveLimit.year})
+                </Text>
+                <Text style={styles.limitBannerText}>
+                  Na zadanie: {onDemandStats.approvedDays}/4 dni, oczekuje {onDemandStats.pendingDays}, pozostalo {onDemandStats.remainingDays}
                 </Text>
               </View>
             )}
@@ -835,7 +1307,17 @@ export default function App() {
                 <>
                   {user.role === 'EMPLOYEE' && (
                     <View style={styles.formCard}>
-                      <Text style={styles.subtitle}>Nowy wniosek do szefa</Text>
+                      <Text style={styles.subtitle}>
+                        {requestEditId ? `Edycja wniosku #${requestEditId}` : 'Nowy wniosek do szefa'}
+                      </Text>
+                      <View style={styles.onDemandBanner}>
+                        <Text style={styles.onDemandBannerText}>
+                          Urlop na zadanie ({onDemandStats.year}): {onDemandStats.approvedDays}/4 dni zatwierdzonych
+                        </Text>
+                        <Text style={styles.onDemandBannerHint}>
+                          Oczekujace: {onDemandStats.pendingDays} dni | Pozostalo: {onDemandStats.remainingDays} dni
+                        </Text>
+                      </View>
                       <Text style={styles.caption}>Typ urlopu</Text>
                       <View style={styles.typeRow}>
                         {LEAVE_TYPES.map((option) => (
@@ -874,22 +1356,50 @@ export default function App() {
                         onPress={() => void submitRequest()}
                         disabled={submitBusy}
                       >
-                        <Text style={styles.buttonText}>Wyslij do szefa</Text>
+                        <Text style={styles.buttonText}>{requestEditId ? 'Zapisz zmiany' : 'Wyslij do szefa'}</Text>
                       </TouchableOpacity>
+                      {requestEditId ? (
+                        <TouchableOpacity style={styles.ghostButton} onPress={cancelEditRequest}>
+                          <Text style={styles.ghostButtonText}>Anuluj edycje</Text>
+                        </TouchableOpacity>
+                      ) : null}
                     </View>
                   )}
 
-                  <View style={styles.listHeaderRow}>
+                  <View style={[styles.listHeaderRow, styles.listHeaderRowWrap]}>
                     <Text style={styles.subtitle}>{requestsTitle}</Text>
                     <View style={styles.listActionsRow}>
-                      <TouchableOpacity style={styles.ghostButton} onPress={() => setShowSentHistory((p) => !p)}>
+                      <TouchableOpacity style={[styles.ghostButton, styles.historyFilterButton]} onPress={() => setShowSentHistory((p) => !p)}>
                         <Text style={styles.ghostButtonText}>{showSentHistory ? 'Ukryj wyslane' : 'Wyslane'}</Text>
                       </TouchableOpacity>
-                      <TouchableOpacity style={styles.ghostButton} onPress={() => setShowApprovedHistory((p) => !p)}>
+                      <TouchableOpacity style={[styles.ghostButton, styles.historyFilterButton]} onPress={() => setShowApprovedHistory((p) => !p)}>
                         <Text style={styles.ghostButtonText}>{showApprovedHistory ? 'Ukryj zatwierdzone' : 'Zatwierdzone'}</Text>
                       </TouchableOpacity>
-                      <TouchableOpacity style={styles.ghostButton} onPress={() => void loadMyRequests()}>
+                      <TouchableOpacity style={[styles.ghostButton, styles.historyFilterButton]} onPress={() => setShowRejectedHistory((p) => !p)}>
+                        <Text style={styles.ghostButtonText}>{showRejectedHistory ? 'Ukryj odrzucone' : 'Odrzucone'}</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={[styles.ghostButton, styles.historyFilterButton]} onPress={() => void loadMyRequests()}>
                         <Text style={styles.ghostButtonText}>Odswiez</Text>
+                      </TouchableOpacity>
+                    </View>
+                    <View style={styles.listActionsRow}>
+                      <TouchableOpacity
+                        style={[styles.ghostButton, styles.historyFilterButton, requestHistoryRange === 'ALL' ? styles.historyFilterButtonActive : null]}
+                        onPress={() => setRequestHistoryRange('ALL')}
+                      >
+                        <Text style={[styles.ghostButtonText, requestHistoryRange === 'ALL' ? styles.historyFilterTextActive : null]}>Wszystkie</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.ghostButton, styles.historyFilterButton, requestHistoryRange === 'MONTH' ? styles.historyFilterButtonActive : null]}
+                        onPress={() => setRequestHistoryRange('MONTH')}
+                      >
+                        <Text style={[styles.ghostButtonText, requestHistoryRange === 'MONTH' ? styles.historyFilterTextActive : null]}>Ten miesiac</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.ghostButton, styles.historyFilterButton, requestHistoryRange === 'YEAR' ? styles.historyFilterButtonActive : null]}
+                        onPress={() => setRequestHistoryRange('YEAR')}
+                      >
+                        <Text style={[styles.ghostButtonText, requestHistoryRange === 'YEAR' ? styles.historyFilterTextActive : null]}>Ten rok</Text>
                       </TouchableOpacity>
                     </View>
                   </View>
@@ -897,10 +1407,10 @@ export default function App() {
                   {showSentHistory && (
                     <View style={styles.historyCard}>
                       <Text style={styles.subtitle}>Historia wyslanych wnioskow</Text>
-                      <Text style={styles.row}>Lacznie wyslanych: {sentRequests.length}</Text>
+                      <Text style={styles.row}>Lacznie wyslanych: {filteredSentRequests.length}</Text>
                       <Text style={styles.hint}>Dane z bazy CLOUD API.</Text>
-                      {sentRequests.length === 0 ? <Text style={styles.row}>Brak wyslanych wnioskow.</Text> : null}
-                      {sentRequests.map((item) => (
+                      {filteredSentRequests.length === 0 ? <Text style={styles.row}>Brak wyslanych wnioskow.</Text> : null}
+                      {filteredSentRequests.map((item) => (
                         <View key={`sh-${item.id}`} style={styles.historyItem}>
                           <Text style={styles.row}>
                             #{item.id} | {formatDateLabel(item.startDate)} - {formatDateLabel(item.endDate)} |{' '}
@@ -914,7 +1424,7 @@ export default function App() {
                   {showApprovedHistory && (
                     <View style={styles.historyCard}>
                       <Text style={styles.subtitle}>Historia zatwierdzonych wnioskow</Text>
-                      <Text style={styles.row}>Lacznie zatwierdzonych: {approvedHistoryStats.total}</Text>
+                      <Text style={styles.row}>Lacznie zatwierdzonych: {filteredApprovedRequests.length}</Text>
                       <Text style={styles.hint}>Dane z bazy CLOUD API.</Text>
                       <View style={styles.counterGrid}>
                         {LEAVE_TYPES.map((type) => (
@@ -924,9 +1434,25 @@ export default function App() {
                           </View>
                         ))}
                       </View>
-                      {approvedRequests.length === 0 ? <Text style={styles.row}>Brak zatwierdzonych wnioskow.</Text> : null}
-                      {approvedRequests.map((item) => (
+                      {filteredApprovedRequests.length === 0 ? <Text style={styles.row}>Brak zatwierdzonych wnioskow.</Text> : null}
+                      {filteredApprovedRequests.map((item) => (
                         <View key={`ah-${item.id}`} style={styles.historyItem}>
+                          <Text style={styles.row}>
+                            #{item.id} | {formatDateLabel(item.startDate)} - {formatDateLabel(item.endDate)} |{' '}
+                            {leaveTypeLabel(item.leaveType)}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+
+                  {showRejectedHistory && (
+                    <View style={styles.historyCard}>
+                      <Text style={styles.subtitle}>Historia odrzuconych wnioskow</Text>
+                      <Text style={styles.row}>Lacznie odrzuconych: {filteredRejectedRequests.length}</Text>
+                      {filteredRejectedRequests.length === 0 ? <Text style={styles.row}>Brak odrzuconych wnioskow.</Text> : null}
+                      {filteredRejectedRequests.map((item) => (
+                        <View key={`rh-${item.id}`} style={styles.historyItem}>
                           <Text style={styles.row}>
                             #{item.id} | {formatDateLabel(item.startDate)} - {formatDateLabel(item.endDate)} |{' '}
                             {leaveTypeLabel(item.leaveType)}
@@ -953,9 +1479,14 @@ export default function App() {
                         <Text style={styles.managerCommentText}>Komentarz administratora: {item.managerComment}</Text>
                       ) : null}
                       {item.status === 'PENDING' && user.role === 'EMPLOYEE' && (
-                        <TouchableOpacity style={styles.cancelButton} onPress={() => void cancelRequest(item.id)}>
-                          <Text style={styles.cancelButtonText}>Anuluj wniosek</Text>
-                        </TouchableOpacity>
+                        <View style={styles.decisionRow}>
+                          <TouchableOpacity style={[styles.ghostButton, styles.pendingActionButton]} onPress={() => beginEditRequest(item)}>
+                            <Text style={styles.ghostButtonText}>Edytuj</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity style={[styles.cancelButton, styles.pendingActionButton]} onPress={() => void cancelRequest(item.id)}>
+                            <Text style={styles.cancelButtonText}>Anuluj</Text>
+                          </TouchableOpacity>
+                        </View>
                       )}
                     </View>
                   ))}
@@ -1009,20 +1540,95 @@ export default function App() {
                     </TouchableOpacity>
                   </View>
 
-                  <View style={styles.listHeaderRow}>
-                    <Text style={styles.subtitle}>Historia wyjazdow ({workTrips.length})</Text>
+                  <View style={[styles.listHeaderRow, styles.listHeaderRowWrap]}>
+                    <Text style={styles.subtitle}>Historia wyjazdow ({filteredWorkTrips.length})</Text>
                     <TouchableOpacity style={styles.ghostButton} onPress={() => void loadWorkTrips()}>
                       <Text style={styles.ghostButtonText}>Odswiez</Text>
                     </TouchableOpacity>
+                    <View style={styles.listActionsRow}>
+                      <TouchableOpacity
+                        style={[styles.ghostButton, styles.historyFilterButton, tripHistoryRange === 'ALL' ? styles.historyFilterButtonActive : null]}
+                        onPress={() => setTripHistoryRange('ALL')}
+                      >
+                        <Text style={[styles.ghostButtonText, tripHistoryRange === 'ALL' ? styles.historyFilterTextActive : null]}>Wszystkie</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.ghostButton, styles.historyFilterButton, tripHistoryRange === 'MONTH' ? styles.historyFilterButtonActive : null]}
+                        onPress={() => setTripHistoryRange('MONTH')}
+                      >
+                        <Text style={[styles.ghostButtonText, tripHistoryRange === 'MONTH' ? styles.historyFilterTextActive : null]}>Ten miesiac</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.ghostButton, styles.historyFilterButton, tripHistoryRange === 'YEAR' ? styles.historyFilterButtonActive : null]}
+                        onPress={() => setTripHistoryRange('YEAR')}
+                      >
+                        <Text style={[styles.ghostButtonText, tripHistoryRange === 'YEAR' ? styles.historyFilterTextActive : null]}>Ten rok</Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
-                  {workTrips.length === 0 ? <Text style={styles.row}>Brak zapisanych wyjazdow.</Text> : null}
-                  {workTrips.map((trip) => (
+                  {filteredWorkTrips.length === 0 ? <Text style={styles.row}>Brak zapisanych wyjazdow.</Text> : null}
+                  {filteredWorkTrips.map((trip) => (
                     <View key={trip.id} style={styles.requestCard}>
+                      <View style={[styles.statusBadge, { backgroundColor: STATUS_META[trip.status ?? 'PENDING']?.background ?? '#f1f5f9' }]}>
+                        <Text style={[styles.statusBadgeText, { color: STATUS_META[trip.status ?? 'PENDING']?.color ?? '#334155' }]}>
+                          {STATUS_META[trip.status ?? 'PENDING']?.label ?? (trip.status ?? 'PENDING')}
+                        </Text>
+                      </View>
                       <Text style={styles.row}>
                         {formatDateLabel(trip.trip_date)} | {trip.start_time.slice(0, 5)} - {trip.end_time.slice(0, 5)}
                       </Text>
                       {trip.destination ? <Text style={styles.row}>Miejsce: {trip.destination}</Text> : null}
                       {trip.description ? <Text style={styles.row}>Opis: {trip.description}</Text> : null}
+                      {trip.manager_comment ? <Text style={styles.managerCommentText}>Komentarz administratora: {trip.manager_comment}</Text> : null}
+                      {tripEditId === trip.id ? (
+                        <>
+                          <View style={styles.decisionRow}>
+                            <TouchableOpacity style={[styles.dateButton, styles.tripEditTimeButton]} onPress={() => openTripEditTimePicker('start')}>
+                              <Text style={styles.dateButtonText}>Start: {tripEditStartTime}</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity style={[styles.dateButton, styles.tripEditTimeButton]} onPress={() => openTripEditTimePicker('end')}>
+                              <Text style={styles.dateButtonText}>Koniec: {tripEditEndTime}</Text>
+                            </TouchableOpacity>
+                          </View>
+                          <TextInput
+                            style={styles.input}
+                            value={tripEditDestination}
+                            onChangeText={setTripEditDestination}
+                            placeholder="Miejsce docelowe"
+                            placeholderTextColor="#64748b"
+                            autoCorrect={false}
+                            keyboardAppearance="light"
+                            selectionColor="#0f172a"
+                          />
+                          <TextInput
+                            style={[styles.input, styles.textArea]}
+                            value={tripEditDescription}
+                            onChangeText={setTripEditDescription}
+                            placeholder="Opis wyjazdu (opcjonalnie)"
+                            placeholderTextColor="#64748b"
+                            autoCorrect={false}
+                            keyboardAppearance="light"
+                            selectionColor="#0f172a"
+                            multiline
+                          />
+                          <View style={styles.decisionRow}>
+                            <TouchableOpacity
+                              style={[styles.button, styles.pendingActionButton, tripEditBusy ? styles.buttonDisabled : null]}
+                              onPress={() => void saveTripHours()}
+                              disabled={tripEditBusy}
+                            >
+                              <Text style={styles.buttonText}>Zapisz godziny</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity style={[styles.ghostButton, styles.pendingActionButton]} onPress={cancelEditTripHours}>
+                              <Text style={styles.ghostButtonText}>Anuluj</Text>
+                            </TouchableOpacity>
+                          </View>
+                        </>
+                      ) : ['PENDING', 'REJECTED'].includes(trip.status ?? 'PENDING') ? (
+                        <TouchableOpacity style={styles.ghostButton} onPress={() => beginEditTripHours(trip)}>
+                          <Text style={styles.ghostButtonText}>Edytuj godziny</Text>
+                        </TouchableOpacity>
+                      ) : null}
                     </View>
                   ))}
                 </>
@@ -1095,7 +1701,7 @@ export default function App() {
                       {pendingRequests.map((item) => (
                         <View key={`adm-req-${item.id}`} style={styles.requestCard}>
                           <Text style={styles.row}>#{item.id} | {item.leave_type} | {item.start_date?.slice(0, 10)} - {item.end_date?.slice(0, 10)}</Text>
-                          <Text style={styles.row}>Pracownik ID: {item.user_id}</Text>
+                          <Text style={styles.row}>Pracownik: {item.user_name ?? `ID ${item.user_id}`}</Text>
                           {item.reason ? <Text style={styles.row}>Powod: {item.reason}</Text> : null}
                           <View style={styles.decisionRow}>
                             <TouchableOpacity style={[styles.approveButton, decisionBusy ? styles.buttonDisabled : null]}
@@ -1122,8 +1728,24 @@ export default function App() {
                       </View>
                       <View style={styles.formCard}>
                         <Text style={styles.caption}>Ustaw limit urlopu</Text>
-                        <TextInput style={styles.input} value={editLimitUserId} onChangeText={setEditLimitUserId}
-                          placeholder="ID pracownika" placeholderTextColor="#64748b" keyboardType="numeric" selectionColor="#0f172a" />
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroller}>
+                          <View style={styles.typeRow}>
+                            {employeeUsers.map((entry) => (
+                              <TouchableOpacity
+                                key={`limit-${entry.id}`}
+                                style={[styles.typeButton, selectedLimitUserId === entry.id ? styles.typeButtonActive : null]}
+                                onPress={() => {
+                                  setSelectedLimitUserId(entry.id);
+                                  setEditLimitUserId(String(entry.id));
+                                }}
+                              >
+                                <Text style={[styles.typeButtonText, selectedLimitUserId === entry.id ? styles.typeButtonTextActive : null]}>
+                                  {entry.name}
+                                </Text>
+                              </TouchableOpacity>
+                            ))}
+                          </View>
+                        </ScrollView>
                         <TextInput style={styles.input} value={editLimitDays} onChangeText={setEditLimitDays}
                           placeholder="Liczba dni (np. 26)" placeholderTextColor="#64748b" keyboardType="numeric" selectionColor="#0f172a" />
                         <TouchableOpacity style={[styles.button, limitBusy ? styles.buttonDisabled : null]}
@@ -1152,11 +1774,56 @@ export default function App() {
                       {allTrips.length === 0 ? <Text style={styles.row}>Brak danych. Nacisnij Odswiez.</Text> : null}
                       {allTrips.map((trip) => (
                         <View key={`atrip-${trip.id}`} style={styles.requestCard}>
+                          <View style={[styles.statusBadge, { backgroundColor: STATUS_META[trip.status ?? 'PENDING']?.background ?? '#f1f5f9' }]}>
+                            <Text style={[styles.statusBadgeText, { color: STATUS_META[trip.status ?? 'PENDING']?.color ?? '#334155' }]}>
+                              {STATUS_META[trip.status ?? 'PENDING']?.label ?? (trip.status ?? 'PENDING')}
+                            </Text>
+                          </View>
                           <Text style={styles.row}>
                             {trip.user_name ?? `ID ${trip.user_id}`} | {trip.trip_date?.slice(0, 10)} | {trip.start_time?.slice(0, 5)} - {trip.end_time?.slice(0, 5)}
                           </Text>
                           {trip.destination ? <Text style={styles.row}>Miejsce: {trip.destination}</Text> : null}
                           {trip.description ? <Text style={styles.row}>Opis: {trip.description}</Text> : null}
+                          {trip.manager_comment ? <Text style={styles.managerCommentText}>Komentarz: {trip.manager_comment}</Text> : null}
+                          {adminTripReviewId === trip.id ? (
+                            <>
+                              <View style={styles.decisionRow}>
+                                <TouchableOpacity style={[styles.dateButton, styles.tripEditTimeButton]} onPress={() => openAdminTripTimePicker('start')}>
+                                  <Text style={styles.dateButtonText}>Start: {adminTripStartTime}</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity style={[styles.dateButton, styles.tripEditTimeButton]} onPress={() => openAdminTripTimePicker('end')}>
+                                  <Text style={styles.dateButtonText}>Koniec: {adminTripEndTime}</Text>
+                                </TouchableOpacity>
+                              </View>
+                              <TextInput
+                                style={[styles.input, styles.textArea]}
+                                value={adminTripComment}
+                                onChangeText={setAdminTripComment}
+                                placeholder="Komentarz administratora"
+                                placeholderTextColor="#64748b"
+                                selectionColor="#0f172a"
+                                multiline
+                              />
+                              <View style={styles.decisionRow}>
+                                <TouchableOpacity style={[styles.approveButton, styles.pendingActionButton, adminTripBusy ? styles.buttonDisabled : null]} disabled={adminTripBusy} onPress={() => void reviewTrip('APPROVED')}>
+                                  <Text style={styles.buttonText}>Przyjmij</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity style={[styles.rejectButton, styles.pendingActionButton, adminTripBusy ? styles.buttonDisabled : null]} disabled={adminTripBusy} onPress={() => void reviewTrip('REJECTED')}>
+                                  <Text style={styles.buttonText}>Odrzuc</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity style={[styles.button, styles.pendingActionButton, adminTripBusy ? styles.buttonDisabled : null]} disabled={adminTripBusy} onPress={() => void reviewTrip('ADJUSTED')}>
+                                  <Text style={styles.buttonText}>Skoryguj</Text>
+                                </TouchableOpacity>
+                              </View>
+                              <TouchableOpacity style={styles.ghostButton} onPress={cancelReviewTrip}>
+                                <Text style={styles.ghostButtonText}>Anuluj review</Text>
+                              </TouchableOpacity>
+                            </>
+                          ) : (
+                            <TouchableOpacity style={styles.ghostButton} onPress={() => beginReviewTrip(trip)}>
+                              <Text style={styles.ghostButtonText}>Review godzin</Text>
+                            </TouchableOpacity>
+                          )}
                         </View>
                       ))}
                     </>
@@ -1171,29 +1838,44 @@ export default function App() {
                         </TouchableOpacity>
                       </View>
                       <View style={styles.formCard}>
-                        <Text style={styles.caption}>Dodaj uzytkownika (haslo: 12345678)</Text>
+                        <Text style={styles.caption}>{editingUserId ? `Edycja uzytkownika #${editingUserId}` : 'Dodaj uzytkownika'}</Text>
                         <TextInput style={styles.input} value={newUserName} onChangeText={setNewUserName}
                           placeholder="Imie i nazwisko" placeholderTextColor="#64748b" selectionColor="#0f172a" />
                         <TextInput style={styles.input} value={newUserEmail} onChangeText={setNewUserEmail}
                           placeholder="Email" placeholderTextColor="#64748b" autoCapitalize="none" selectionColor="#0f172a" />
+                        <TextInput style={styles.input} value={newUserPassword} onChangeText={setNewUserPassword}
+                          placeholder={editingUserId ? 'Nowe haslo (opcjonalnie)' : 'Haslo'} placeholderTextColor="#64748b" selectionColor="#0f172a" secureTextEntry />
                         <View style={styles.typeRow}>
                           {(['EMPLOYEE', 'ADMIN'] as const).map((r) => (
                             <TouchableOpacity key={r}
                               style={[styles.typeButton, newUserRole === r ? styles.typeButtonActive : null]}
                               onPress={() => setNewUserRole(r)}>
-                              <Text style={[styles.typeButtonText, newUserRole === r ? styles.typeButtonTextActive : null]}>{r}</Text>
+                              <Text style={[styles.typeButtonText, newUserRole === r ? styles.typeButtonTextActive : null]}>{roleLabel(r)}</Text>
                             </TouchableOpacity>
                           ))}
                         </View>
                         <TouchableOpacity style={[styles.button, newUserBusy ? styles.buttonDisabled : null]}
                           disabled={newUserBusy} onPress={() => void createNewUser()}>
-                          <Text style={styles.buttonText}>Dodaj uzytkownika</Text>
+                          <Text style={styles.buttonText}>{editingUserId ? 'Zapisz uzytkownika' : 'Dodaj uzytkownika'}</Text>
                         </TouchableOpacity>
+                        {editingUserId ? (
+                          <TouchableOpacity style={styles.ghostButton} onPress={cancelEditUser}>
+                            <Text style={styles.ghostButtonText}>Anuluj edycje</Text>
+                          </TouchableOpacity>
+                        ) : null}
                       </View>
                       {allUsersList.map((u) => (
                         <View key={`usr-${u.id}`} style={styles.requestCard}>
-                          <Text style={styles.row}>{u.name} — {u.role}</Text>
+                          <Text style={styles.row}>{u.name} - {roleLabel(u.role)}</Text>
                           <Text style={styles.hint}>{u.email}</Text>
+                          <View style={styles.decisionRow}>
+                            <TouchableOpacity style={[styles.ghostButton, styles.pendingActionButton]} onPress={() => beginEditUser(u)}>
+                              <Text style={styles.ghostButtonText}>Edytuj</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity style={[styles.cancelButton, styles.pendingActionButton]} onPress={() => void deleteUser(u.id)}>
+                              <Text style={styles.cancelButtonText}>Usun</Text>
+                            </TouchableOpacity>
+                          </View>
                         </View>
                       ))}
                     </>
@@ -1266,10 +1948,31 @@ const styles = StyleSheet.create({
     padding: 10,
     marginBottom: 8,
   },
+  onDemandBanner: {
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+    backgroundColor: '#eff6ff',
+    borderRadius: 8,
+    padding: 8,
+    marginBottom: 8,
+  },
+  onDemandBannerText: {
+    color: '#1e3a8a',
+    fontWeight: '700',
+    fontSize: 13,
+  },
+  onDemandBannerHint: {
+    color: '#1d4ed8',
+    fontSize: 12,
+    marginTop: 2,
+  },
   caption: {
     color: '#334155',
     marginBottom: 6,
     fontWeight: '600',
+  },
+  chipScroller: {
+    marginBottom: 8,
   },
   typeRow: {
     flexDirection: 'row',
@@ -1317,9 +2020,30 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+  listHeaderRowWrap: {
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    gap: 6,
+  },
   listActionsRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'flex-start',
+    width: '100%',
     gap: 8,
+  },
+  historyFilterButton: {
+    marginTop: 0,
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    flexShrink: 1,
+  },
+  historyFilterButtonActive: {
+    backgroundColor: '#0f172a',
+    borderColor: '#0f172a',
+  },
+  historyFilterTextActive: {
+    color: '#ffffff',
   },
   historyCard: {
     borderWidth: 1,
@@ -1514,8 +2238,17 @@ const styles = StyleSheet.create({
   },
   decisionRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 8,
     marginTop: 8,
+  },
+  pendingActionButton: {
+    flex: 1,
+    minWidth: 120,
+  },
+  tripEditTimeButton: {
+    flex: 1,
+    marginBottom: 0,
   },
   approveButton: {
     flex: 1,

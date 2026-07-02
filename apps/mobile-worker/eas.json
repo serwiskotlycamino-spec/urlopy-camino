@@ -1,12 +1,14 @@
 {
   "cli": {
-    "version": ">= 20.0.0"
+    "version": ">= 20.0.0",
+    "appVersionSource": "local"
   },
   "build": {
     "preview": {
       "distribution": "internal",
       "android": {
-        "buildType": "apk"
+        "buildType": "apk",
+        "image": "ubuntu-24.04-jdk-17-ndk-r27b"
       },
       "env": {
         "EXPO_PUBLIC_API_URL_CLOUD": "https://urlopy-api-svvhqvitka-lm.a.run.app",

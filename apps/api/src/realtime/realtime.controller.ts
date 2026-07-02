@@ -1,5 +1,5 @@
 import { Controller, MessageEvent, Query, Sse, UnauthorizedException } from '@nestjs/common';
-import { map, Observable } from 'rxjs';
+import { interval, map, merge, Observable } from 'rxjs';
 import { RealtimeService } from './realtime.service';
 import { JwtService } from '../auth/jwt.service';
 
@@ -18,7 +18,16 @@ export class RealtimeController {
 
     const user = this.jwtService.verify(token);
     const id = Number(user.id);
-    return this.realtime.forUser(id).pipe(
+    return merge(
+      this.realtime.forUser(id),
+      interval(25000).pipe(
+        map(() => ({
+          userId: id,
+          type: 'heartbeat',
+          payload: { timestamp: new Date().toISOString() },
+        })),
+      ),
+    ).pipe(
       map((event) => ({
         type: event.type,
         data: event.payload,

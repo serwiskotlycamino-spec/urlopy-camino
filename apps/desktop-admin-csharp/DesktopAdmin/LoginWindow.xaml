@@ -14,6 +14,8 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
@@ -29,7 +31,7 @@
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
             <TextBlock Grid.Column="0" VerticalAlignment="Center" Text="API URL" FontWeight="SemiBold" />
-            <TextBox Grid.Column="1" x:Name="ApiUrlTextBox" />
+            <TextBox Grid.Column="1" x:Name="ApiUrlTextBox" TextChanged="ApiUrlTextBox_TextChanged" />
         </Grid>
 
         <Grid Grid.Row="2" Margin="0,0,0,10">
@@ -37,8 +39,8 @@
                 <ColumnDefinition Width="130" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
-            <TextBlock Grid.Column="0" VerticalAlignment="Center" Text="Użytkownik" FontWeight="SemiBold" />
-            <ComboBox Grid.Column="1" x:Name="UserComboBox" DisplayMemberPath="Name" SelectedValuePath="Email" />
+            <TextBlock Grid.Column="0" VerticalAlignment="Center" Text="Email" FontWeight="SemiBold" />
+            <TextBox Grid.Column="1" x:Name="EmailTextBox" />
         </Grid>
 
         <Grid Grid.Row="3" Margin="0,0,0,10">
@@ -46,20 +48,32 @@
                 <ColumnDefinition Width="130" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
-            <TextBlock Grid.Column="0" VerticalAlignment="Center" Text="Hasło" FontWeight="SemiBold" />
-            <PasswordBox Grid.Column="1" x:Name="PasswordBox" />
+            <TextBlock Grid.Column="0" VerticalAlignment="Center" Text="Wybierz użytkownika" FontWeight="SemiBold" />
+            <ComboBox Grid.Column="1" x:Name="UserComboBox" DisplayMemberPath="Name" SelectedValuePath="Email" SelectionChanged="UserComboBox_SelectionChanged" />
         </Grid>
 
-        <CheckBox Grid.Row="4" x:Name="RememberMeCheckBox" Content="Zapamiętaj mnie" Margin="130,0,0,10" />
+        <Grid Grid.Row="4" Margin="0,0,0,10">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="130" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0" VerticalAlignment="Center" Text="Hasło" FontWeight="SemiBold" />
+            <PasswordBox Grid.Column="1" x:Name="PasswordBox" />
+            <TextBox Grid.Column="1" x:Name="PasswordTextBox" Visibility="Collapsed" />
+        </Grid>
 
-        <TextBlock Grid.Row="5"
+        <CheckBox Grid.Row="5" x:Name="ShowPasswordCheckBox" Content="Pokaż hasło" Margin="130,0,0,0" Checked="ShowPassword_Checked" Unchecked="ShowPassword_Unchecked" />
+
+        <CheckBox Grid.Row="6" x:Name="RememberMeCheckBox" Content="Zapamiętaj mnie" Margin="130,0,0,10" />
+
+        <TextBlock Grid.Row="7"
                    x:Name="ErrorTextBlock"
                    Foreground="#B00020"
                    TextWrapping="Wrap"
                    MinHeight="22"
                    Margin="0,0,0,8" />
 
-        <StackPanel Grid.Row="6" Orientation="Horizontal" HorizontalAlignment="Right">
+        <StackPanel Grid.Row="8" Orientation="Horizontal" HorizontalAlignment="Right">
             <Button x:Name="SwitchAccountButton"
                     Content="Zmień konto"
                     Width="140"

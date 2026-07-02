@@ -7,6 +7,17 @@
       "command": "docker compose up -d",
       "group": "build",
       "problemMatcher": []
+    },
+    {
+      "label": "build-desktop-admin",
+      "type": "shell",
+      "command": "dotnet",
+      "args": [
+        "build",
+        "${workspaceFolder}/apps/desktop-admin-csharp/DesktopAdmin/DesktopAdmin.csproj"
+      ],
+      "group": "build",
+      "problemMatcher": "$msCompile"
     }
   ]
 }

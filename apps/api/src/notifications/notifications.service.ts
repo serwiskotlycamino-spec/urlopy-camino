@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import * as nodemailer from 'nodemailer';
@@ -43,6 +43,16 @@ function eventTitle(event: string): string {
       return 'Wniosek urlopowy zatwierdzony';
     case 'leave.request.rejected':
       return 'Wniosek urlopowy odrzucony';
+    case 'leave.request.cancelled':
+      return 'Wniosek urlopowy anulowany';
+    case 'work.trip.approved':
+      return 'Godziny wyjazdowe zatwierdzone';
+    case 'work.trip.rejected':
+      return 'Godziny wyjazdowe odrzucone';
+    case 'work.trip.adjusted':
+      return 'Godziny wyjazdowe skorygowane';
+    case 'work.trip.created':
+      return 'Nowe godziny wyjazdowe';
     default:
       return 'Powiadomienie';
   }
@@ -50,6 +60,8 @@ function eventTitle(event: string): string {
 
 @Injectable()
 export class NotificationsService {
+  private readonly logger = new Logger(NotificationsService.name);
+
   constructor(
     private readonly db: DatabaseService,
     private readonly realtime: RealtimeService,
@@ -63,13 +75,6 @@ export class NotificationsService {
     message: string,
     payload: Record<string, unknown>,
   ) {
-    const settings = await this.resolveMailSettings();
-
-    // In EMAIL_ONLY mode mailbox is the only information carrier.
-    if (settings.communicationMode === 'EMAIL_ONLY') {
-      return;
-    }
-
     await this.db.run(
       `INSERT INTO notifications (user_id, channel, event, message, payload, status)
        VALUES ($1, 'IN_APP', $2, $3, $4, 'SENT')`,
@@ -132,6 +137,12 @@ export class NotificationsService {
     ]);
 
     if (!contact?.device_token) {
+      this.logger.warn(`Brak device_token dla userId=${userId}. Push nie zostal wyslany.`);
+      await this.db.run(
+        `INSERT INTO notifications (user_id, channel, event, message, payload, status)
+         VALUES ($1, 'PUSH', $2, $3, $4, 'FAILED')`,
+        [userId, event, message, payload],
+      );
       return;
     }
 
@@ -143,11 +154,21 @@ export class NotificationsService {
           title: eventTitle(event),
           body: message,
         },
+        android: {
+          priority: 'high',
+          notification: {
+            channelId: 'default',
+          },
+        },
         data: {
           event,
         },
       });
-    } catch {
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'unknown';
+      this.logger.error(
+        `Blad wysylki PUSH dla userId=${userId}, event=${event}: ${errorMessage}`,
+      );
       status = 'FAILED';
     }
 
@@ -227,6 +248,7 @@ export class NotificationsService {
 
     const serviceAccountRaw = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
     if (!serviceAccountRaw) {
+      this.logger.warn('Brak FIREBASE_SERVICE_ACCOUNT_JSON. Wysylka PUSH bedzie pomijana.');
       return;
     }
 
@@ -235,8 +257,9 @@ export class NotificationsService {
       admin.initializeApp({
         credential: admin.credential.cert(serviceAccount),
       });
-    } catch {
-      // ignore malformed firebase config in local environment
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'unknown';
+      this.logger.error(`Nie udalo sie zainicjalizowac Firebase Admin SDK: ${errorMessage}`);
     }
   }
 }

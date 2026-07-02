@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { CreateLeaveRequestDto } from './dto/create-leave-request.dto';
 import { LeaveDecisionDto } from './dto/leave-decision.dto';
+import { UpdateLeaveRequestDto } from './dto/update-leave-request.dto';
 import { LeaveRequestsService } from './leave-requests.service';
 import { AuthGuard } from '../auth/auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
@@ -32,6 +33,12 @@ export class LeaveRequestsController {
     return this.leaveRequestsService.cancel(Number(id), user.id);
   }
 
+  @Roles('EMPLOYEE')
+  @Patch(':id')
+  updateMine(@Param('id') id: string, @CurrentUser() user: AuthUser, @Body() body: UpdateLeaveRequestDto) {
+    return this.leaveRequestsService.updateMine(Number(id), user.id, body);
+  }
+
   @Roles('ADMIN')
   @Get('pending')
   getPending(@CurrentUser() user: AuthUser) {
@@ -39,8 +46,21 @@ export class LeaveRequestsController {
   }
 
   @Roles('ADMIN')
+  @Get('all')
+  getAll(@CurrentUser() user: AuthUser) {
+    return this.leaveRequestsService.getAllForAdmin(user.id);
+  }
+
+  @Roles('ADMIN')
   @Patch(':id/decision')
   decide(@Param('id') id: string, @CurrentUser() user: AuthUser, @Body() body: LeaveDecisionDto) {
     return this.leaveRequestsService.decide(Number(id), user.id, body.decision, body.comment);
+  }
+
+  @Roles('ADMIN')
+  @HttpCode(HttpStatus.OK)
+  @Delete(':id/admin')
+  deleteForAdmin(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.leaveRequestsService.deleteForAdmin(user.id, Number(id));
   }
 }

@@ -1,5 +1,7 @@
-import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { CreateWorkTripDto } from './dto/create-work-trip.dto';
+import { ReviewWorkTripDto } from './dto/review-work-trip.dto';
+import { UpdateWorkTripHoursDto } from './dto/update-work-trip-hours.dto';
 import { WorkTripsService } from './work-trips.service';
 import { AuthGuard } from '../auth/auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
@@ -22,6 +24,18 @@ export class WorkTripsController {
   @Get('mine')
   getMine(@CurrentUser() user: AuthUser) {
     return this.workTripsService.getMine(user.id);
+  }
+
+  @Roles('EMPLOYEE', 'ADMIN')
+  @Patch(':id/hours')
+  updateHours(@Param('id') id: string, @CurrentUser() user: AuthUser, @Body() body: UpdateWorkTripHoursDto) {
+    return this.workTripsService.updateHours(Number(id), user.id, body);
+  }
+
+  @Roles('ADMIN')
+  @Patch(':id/review')
+  review(@Param('id') id: string, @CurrentUser() user: AuthUser, @Body() body: ReviewWorkTripDto) {
+    return this.workTripsService.review(Number(id), user.id, body);
   }
 
   @Roles('ADMIN')
