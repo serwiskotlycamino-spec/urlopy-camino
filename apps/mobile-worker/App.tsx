@@ -85,9 +85,21 @@ type PendingItem = {
   manager_comment: string | null;
 };
 
-type ActiveTab = 'requests' | 'trips' | 'notifications' | 'admin';
+type AdminLeaveRequest = PendingItem & {
+  created_at?: string;
+  updated_at?: string;
+  decision_at?: string | null;
+};
+
+type CalendarDayDetails = {
+  pendingUsers: string[];
+  approvedUsers: string[];
+};
+
+type ActiveTab = 'requests' | 'trips' | 'notifications' | 'admin' | 'calendar';
 type AdminSubTab = 'all-requests' | 'all-limits' | 'all-trips' | 'all-users';
 type HistoryRange = 'ALL' | 'MONTH' | 'YEAR';
+type AdminRequestStatusFilter = 'ALL' | 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
 type UserPickItem = { id: number; name: string; role: string; email: string };
 type EmployeeLeaveSummary = {
   userId: number; name: string; email: string;
@@ -243,10 +255,26 @@ function mapApiLeaveRequest(row: ApiLeaveRequest): LeaveRequest {
   };
 }
 
+function addDays(base: Date, days: number): Date {
+  const next = new Date(base);
+  next.setDate(base.getDate() + days);
+  return next;
+}
+
+function formatMonthLabel(date: Date): string {
+  return date.toLocaleDateString('pl-PL', {
+    month: 'long',
+    year: 'numeric',
+  });
+}
+
+const PROD_CLOUD_API_URL = 'https://urlopy-api-622924376884.europe-central2.run.app';
+
 const CLOUD_API_URL = (
+  process.env.EXPO_PUBLIC_API_URL_WEB ??
   process.env.EXPO_PUBLIC_API_URL_CLOUD ??
   process.env.EXPO_PUBLIC_API_URL ??
-  'https://urlopy-api-svvhqvitka-lm.a.run.app'
+  PROD_CLOUD_API_URL
 ).replace(/\/+$/, '');
 
 // Powiadomienia systemowe pokazuj sie nawet gdy aplikacja jest zamknieta (FCM).
@@ -287,6 +315,7 @@ export default function App() {
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [leaveLimit, setLeaveLimit] = useState<LeaveLimit | null>(null);
   const [pendingRequests, setPendingRequests] = useState<PendingItem[]>([]);
+  const [allAdminRequests, setAllAdminRequests] = useState<AdminLeaveRequest[]>([]);
   const [tripDate, setTripDate] = useState(toIsoDate(new Date()));
   const [tripStartTime, setTripStartTime] = useState('08:00');
   const [tripEndTime, setTripEndTime] = useState('16:00');
@@ -303,6 +332,8 @@ export default function App() {
   const [decisionComment, setDecisionComment] = useState('');
   const [decisionBusy, setDecisionBusy] = useState(false);
   const [adminSubTab, setAdminSubTab] = useState<AdminSubTab>('all-requests');
+  const [adminRequestHistoryRange, setAdminRequestHistoryRange] = useState<HistoryRange>('ALL');
+  const [adminRequestStatusFilter, setAdminRequestStatusFilter] = useState<AdminRequestStatusFilter>('ALL');
   const [allLimits, setAllLimits] = useState<EmployeeLeaveSummary[]>([]);
   const [allTrips, setAllTrips] = useState<WorkTripAdmin[]>([]);
   const [allUsersList, setAllUsersList] = useState<UserPickItem[]>([]);
@@ -321,6 +352,11 @@ export default function App() {
   const [adminTripEndTime, setAdminTripEndTime] = useState('16:00');
   const [adminTripComment, setAdminTripComment] = useState('');
   const [adminTripBusy, setAdminTripBusy] = useState(false);
+  const [calendarMonth, setCalendarMonth] = useState(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  });
+  const [selectedCalendarDate, setSelectedCalendarDate] = useState(toIsoDate(new Date()));
 
   const apiUrl = CLOUD_API_URL;
 
@@ -353,6 +389,69 @@ export default function App() {
     () => allUsersList.filter((entry) => entry.role === 'EMPLOYEE'),
     [allUsersList],
   );
+
+  const filteredAdminRequests = useMemo(
+    () => allAdminRequests.filter((request) => {
+      const inRange = isInHistoryRange((request.start_date ?? '').slice(0, 10), adminRequestHistoryRange);
+      if (!inRange) {
+        return false;
+      }
+      if (adminRequestStatusFilter === 'ALL') {
+        return true;
+      }
+      return request.status === adminRequestStatusFilter;
+    }),
+    [adminRequestHistoryRange, adminRequestStatusFilter, allAdminRequests],
+  );
+
+  const adminCalendarData = useMemo(() => {
+    const monthStart = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), 1);
+    const monthEnd = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 0);
+    const gridStart = addDays(monthStart, -((monthStart.getDay() + 6) % 7));
+    const gridEnd = addDays(monthEnd, 6 - ((monthEnd.getDay() + 6) % 7));
+
+    const days: Date[] = [];
+    for (let cursor = new Date(gridStart); cursor <= gridEnd; cursor = addDays(cursor, 1)) {
+      days.push(new Date(cursor));
+    }
+
+    const map: Record<string, CalendarDayDetails> = {};
+    for (const request of allAdminRequests) {
+      if (request.status !== 'PENDING' && request.status !== 'APPROVED') {
+        continue;
+      }
+
+      const startIso = (request.start_date ?? '').slice(0, 10);
+      const endIso = (request.end_date ?? '').slice(0, 10);
+      if (!DATE_REGEX.test(startIso) || !DATE_REGEX.test(endIso)) {
+        continue;
+      }
+
+      const start = parseIsoDateToUtc(startIso);
+      const end = parseIsoDateToUtc(endIso);
+      for (let cursor = new Date(start); cursor <= end; cursor = addDays(cursor, 1)) {
+        const iso = toIsoDate(cursor);
+        if (!map[iso]) {
+          map[iso] = { pendingUsers: [], approvedUsers: [] };
+        }
+        const userName = request.user_name ?? `ID ${request.user_id}`;
+        if (request.status === 'PENDING') {
+          if (!map[iso].pendingUsers.includes(userName)) {
+            map[iso].pendingUsers.push(userName);
+          }
+        } else {
+          if (!map[iso].approvedUsers.includes(userName)) {
+            map[iso].approvedUsers.push(userName);
+          }
+        }
+      }
+    }
+
+    return { days, map, monthStart };
+  }, [allAdminRequests, calendarMonth]);
+
+  const selectedCalendarDetails =
+    adminCalendarData.map[selectedCalendarDate] ?? ({ pendingUsers: [], approvedUsers: [] } as CalendarDayDetails);
 
   const approvedHistoryStats = useMemo(() => {
     const counts: Record<LeaveRequest['leaveType'], number> = {
@@ -410,6 +509,7 @@ export default function App() {
     setNotifications([]);
     setLeaveLimit(null);
     setPendingRequests([]);
+    setAllAdminRequests([]);
     setAllLimits([]);
     setAllTrips([]);
     setAllUsersList([]);
@@ -568,6 +668,14 @@ export default function App() {
     setPendingRequests(data);
   }, [apiUrl, authFetch, user]);
 
+  const loadAllRequestsForAdmin = useCallback(async () => {
+    if (!user || user.role !== 'ADMIN') return;
+    const res = await authFetch(`${apiUrl}/leave-requests/all`);
+    if (!res || !res.ok) return;
+    const data = (await res.json()) as AdminLeaveRequest[];
+    setAllAdminRequests(data);
+  }, [apiUrl, authFetch, user]);
+
   const loadLoginUsers = useCallback(async () => {
     setLoginLoading(true);
     try {
@@ -616,11 +724,20 @@ export default function App() {
     ];
 
     if (user.role === 'ADMIN') {
-      tasks.push(loadPending(), loadAllUsers(), loadAllLimits(), loadAllTrips());
+      tasks.push(loadPending(), loadAllRequestsForAdmin(), loadAllUsers(), loadAllLimits(), loadAllTrips());
     }
 
     await Promise.all(tasks);
-  }, [loadAllLimits, loadAllTrips, loadAllUsers, loadLeaveLimit, loadMyRequests, loadNotifications, loadPending, loadWorkTrips, user]);
+  }, [loadAllLimits, loadAllRequestsForAdmin, loadAllTrips, loadAllUsers, loadLeaveLimit, loadMyRequests, loadNotifications, loadPending, loadWorkTrips, user]);
+
+  const cancelRequestForAdmin = useCallback(async (requestId: number) => {
+    const res = await authFetch(`${apiUrl}/leave-requests/${requestId}/admin`, { method: 'DELETE' });
+    if (!res || !res.ok) {
+      setError('Nie udalo sie anulowac wniosku.');
+      return;
+    }
+    await Promise.all([loadPending(), loadAllRequestsForAdmin()]);
+  }, [apiUrl, authFetch, loadAllRequestsForAdmin, loadPending]);
 
   const setLimitForUser = useCallback(async () => {
     const uid = selectedLimitUserId ?? Number(editLimitUserId);
@@ -818,9 +935,9 @@ export default function App() {
       return;
     }
     setDecisionComment('');
-    await loadPending();
+    await Promise.all([loadPending(), loadAllRequestsForAdmin()]);
     setDecisionBusy(false);
-  }, [apiUrl, authFetch, decisionComment, loadPending]);
+  }, [apiUrl, authFetch, decisionComment, loadAllRequestsForAdmin, loadPending]);
 
   const submitWorkTrip = useCallback(async () => {
     if (!user) return;
@@ -1290,6 +1407,19 @@ export default function App() {
               })}
               {user.role === 'ADMIN' && (
                 <TouchableOpacity
+                  style={[styles.tabButton, activeTab === 'calendar' ? styles.tabButtonActive : null]}
+                  onPress={() => {
+                    setActiveTab('calendar');
+                    void loadAllRequestsForAdmin();
+                  }}
+                >
+                  <Text style={[styles.tabButtonText, activeTab === 'calendar' ? styles.tabButtonTextActive : null]}>
+                    Kalendarz
+                  </Text>
+                </TouchableOpacity>
+              )}
+              {user.role === 'ADMIN' && (
+                <TouchableOpacity
                   style={[styles.tabButton, activeTab === 'admin' ? styles.tabButtonActive : null]}
                   onPress={() => setActiveTab('admin')}
                 >
@@ -1655,6 +1785,107 @@ export default function App() {
                 </>
               )}
 
+              {/* ======= TAB: KALENDARZ ADMINA ======= */}
+              {activeTab === 'calendar' && user.role === 'ADMIN' && (
+                <>
+                  <View style={styles.listHeaderRow}>
+                    <Text style={styles.subtitle}>Kalendarz urlopow</Text>
+                    <TouchableOpacity style={styles.ghostButton} onPress={() => void loadAllRequestsForAdmin()}>
+                      <Text style={styles.ghostButtonText}>Odswiez</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  <View style={styles.calendarLegendRow}>
+                    <View style={styles.calendarLegendItem}>
+                      <View style={[styles.calendarLegendDot, { backgroundColor: '#f97316' }]} />
+                      <Text style={styles.hint}>Przetwarzany</Text>
+                    </View>
+                    <View style={styles.calendarLegendItem}>
+                      <View style={[styles.calendarLegendDot, { backgroundColor: '#16a34a' }]} />
+                      <Text style={styles.hint}>Zatwierdzony</Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.calendarHeaderRow}>
+                    <TouchableOpacity
+                      style={styles.ghostButton}
+                      onPress={() => setCalendarMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))}
+                    >
+                      <Text style={styles.ghostButtonText}>{'<'}</Text>
+                    </TouchableOpacity>
+                    <Text style={styles.calendarMonthLabel}>{formatMonthLabel(adminCalendarData.monthStart)}</Text>
+                    <TouchableOpacity
+                      style={styles.ghostButton}
+                      onPress={() => setCalendarMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))}
+                    >
+                      <Text style={styles.ghostButtonText}>{'>'}</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  <View style={styles.calendarWeekLabelsRow}>
+                    {['Pn', 'Wt', 'Sr', 'Cz', 'Pt', 'So', 'Nd'].map((label) => (
+                      <Text key={label} style={styles.calendarWeekLabel}>{label}</Text>
+                    ))}
+                  </View>
+
+                  <View style={styles.calendarGrid}>
+                    {adminCalendarData.days.map((dateObj) => {
+                      const iso = toIsoDate(dateObj);
+                      const details = adminCalendarData.map[iso];
+                      const inCurrentMonth = dateObj.getMonth() === adminCalendarData.monthStart.getMonth();
+                      const isSelected = selectedCalendarDate === iso;
+                      const pendingCount = details?.pendingUsers.length ?? 0;
+                      const approvedCount = details?.approvedUsers.length ?? 0;
+
+                      return (
+                        <TouchableOpacity
+                          key={iso}
+                          style={[
+                            styles.calendarDayCell,
+                            !inCurrentMonth ? styles.calendarDayCellMuted : null,
+                            isSelected ? styles.calendarDayCellSelected : null,
+                          ]}
+                          onPress={() => setSelectedCalendarDate(iso)}
+                        >
+                          <Text style={[styles.calendarDayText, !inCurrentMonth ? styles.calendarDayTextMuted : null]}>
+                            {dateObj.getDate()}
+                          </Text>
+                          <View style={styles.calendarDotsRow}>
+                            {pendingCount > 0 ? <View style={[styles.calendarDot, { backgroundColor: '#f97316' }]} /> : null}
+                            {approvedCount > 0 ? <View style={[styles.calendarDot, { backgroundColor: '#16a34a' }]} /> : null}
+                          </View>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+
+                  <View style={styles.historyCard}>
+                    <Text style={styles.subtitle}>Dzien {formatDateLabel(selectedCalendarDate)}</Text>
+                    {selectedCalendarDetails.pendingUsers.length === 0 && selectedCalendarDetails.approvedUsers.length === 0 ? (
+                      <Text style={styles.row}>Brak zaplanowanych urlopow.</Text>
+                    ) : null}
+
+                    {selectedCalendarDetails.pendingUsers.length > 0 ? (
+                      <>
+                        <Text style={styles.row}>Przetwarzane:</Text>
+                        {selectedCalendarDetails.pendingUsers.map((name) => (
+                          <Text key={`p-${selectedCalendarDate}-${name}`} style={styles.row}>- {name}</Text>
+                        ))}
+                      </>
+                    ) : null}
+
+                    {selectedCalendarDetails.approvedUsers.length > 0 ? (
+                      <>
+                        <Text style={styles.row}>Zatwierdzone:</Text>
+                        {selectedCalendarDetails.approvedUsers.map((name) => (
+                          <Text key={`a-${selectedCalendarDate}-${name}`} style={styles.row}>- {name}</Text>
+                        ))}
+                      </>
+                    ) : null}
+                  </View>
+                </>
+              )}
+
               {/* ======= TAB: SZEF ======= */}
               {/* ======= TAB: ADMIN ======= */}
               {activeTab === 'admin' && user.role === 'ADMIN' && (
@@ -1713,6 +1944,80 @@ export default function App() {
                               <Text style={styles.buttonText}>Odrzuc</Text>
                             </TouchableOpacity>
                           </View>
+                        </View>
+                      ))}
+
+                      <View style={[styles.listHeaderRow, styles.listHeaderRowWrap]}>
+                        <Text style={styles.subtitle}>Historia wszystkich wnioskow ({filteredAdminRequests.length})</Text>
+                        <View style={styles.listActionsRow}>
+                          <TouchableOpacity style={styles.ghostButton} onPress={() => void loadAllRequestsForAdmin()}>
+                            <Text style={styles.ghostButtonText}>Odswiez</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={[styles.ghostButton, styles.historyFilterButton, adminRequestHistoryRange === 'ALL' ? styles.historyFilterButtonActive : null]}
+                            onPress={() => setAdminRequestHistoryRange('ALL')}
+                          >
+                            <Text style={[styles.ghostButtonText, adminRequestHistoryRange === 'ALL' ? styles.historyFilterTextActive : null]}>Wszystkie</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={[styles.ghostButton, styles.historyFilterButton, adminRequestHistoryRange === 'MONTH' ? styles.historyFilterButtonActive : null]}
+                            onPress={() => setAdminRequestHistoryRange('MONTH')}
+                          >
+                            <Text style={[styles.ghostButtonText, adminRequestHistoryRange === 'MONTH' ? styles.historyFilterTextActive : null]}>Ten miesiac</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={[styles.ghostButton, styles.historyFilterButton, adminRequestHistoryRange === 'YEAR' ? styles.historyFilterButtonActive : null]}
+                            onPress={() => setAdminRequestHistoryRange('YEAR')}
+                          >
+                            <Text style={[styles.ghostButtonText, adminRequestHistoryRange === 'YEAR' ? styles.historyFilterTextActive : null]}>Ten rok</Text>
+                          </TouchableOpacity>
+                        </View>
+                        <View style={styles.listActionsRow}>
+                          {(['ALL', 'PENDING', 'APPROVED', 'REJECTED', 'CANCELLED'] as AdminRequestStatusFilter[]).map((statusFilter) => (
+                            <TouchableOpacity
+                              key={`admin-status-${statusFilter}`}
+                              style={[styles.ghostButton, styles.historyFilterButton, adminRequestStatusFilter === statusFilter ? styles.historyFilterButtonActive : null]}
+                              onPress={() => setAdminRequestStatusFilter(statusFilter)}
+                            >
+                              <Text style={[styles.ghostButtonText, adminRequestStatusFilter === statusFilter ? styles.historyFilterTextActive : null]}>
+                                {statusFilter === 'ALL' ? 'Status: wszystkie' : STATUS_META[statusFilter]?.label ?? statusFilter}
+                              </Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                      </View>
+
+                      {filteredAdminRequests.length === 0 ? <Text style={styles.row}>Brak wnioskow w historii.</Text> : null}
+                      {filteredAdminRequests.map((item) => (
+                        <View key={`adm-hist-${item.id}`} style={styles.requestCard}>
+                          <View style={[styles.statusBadge, { backgroundColor: STATUS_META[item.status]?.background ?? '#f1f5f9' }]}>
+                            <Text style={[styles.statusBadgeText, { color: STATUS_META[item.status]?.color ?? '#334155' }]}>
+                              {STATUS_META[item.status]?.label ?? item.status}
+                            </Text>
+                          </View>
+                          <Text style={styles.row}>
+                            #{item.id} | {item.user_name ?? `ID ${item.user_id}`} | {formatDateLabel((item.start_date ?? '').slice(0, 10))} - {formatDateLabel((item.end_date ?? '').slice(0, 10))}
+                          </Text>
+                          <Text style={styles.row}>Typ: {item.leave_type}</Text>
+                          {item.reason ? <Text style={styles.row}>Powod: {item.reason}</Text> : null}
+                          {item.manager_comment ? <Text style={styles.managerCommentText}>Komentarz: {item.manager_comment}</Text> : null}
+
+                          {item.status === 'PENDING' ? (
+                            <View style={styles.decisionRow}>
+                              <TouchableOpacity style={[styles.approveButton, decisionBusy ? styles.buttonDisabled : null]}
+                                disabled={decisionBusy} onPress={() => void decideRequest(item.id, 'APPROVED')}>
+                                <Text style={styles.buttonText}>Akceptuj</Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity style={[styles.rejectButton, decisionBusy ? styles.buttonDisabled : null]}
+                                disabled={decisionBusy} onPress={() => void decideRequest(item.id, 'REJECTED')}>
+                                <Text style={styles.buttonText}>Odrzuc</Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity style={[styles.cancelButton, decisionBusy ? styles.buttonDisabled : null]}
+                                disabled={decisionBusy} onPress={() => void cancelRequestForAdmin(item.id)}>
+                                <Text style={styles.cancelButtonText}>Anuluj</Text>
+                              </TouchableOpacity>
+                            </View>
+                          ) : null}
                         </View>
                       ))}
                     </>
@@ -2196,6 +2501,84 @@ const styles = StyleSheet.create({
   },
   tabButtonTextActive: {
     color: '#ffffff',
+  },
+  calendarLegendRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 8,
+  },
+  calendarLegendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  calendarLegendDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 999,
+  },
+  calendarHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+    gap: 8,
+  },
+  calendarMonthLabel: {
+    flex: 1,
+    textAlign: 'center',
+    color: '#0f172a',
+    fontWeight: '700',
+    textTransform: 'capitalize',
+  },
+  calendarWeekLabelsRow: {
+    flexDirection: 'row',
+    marginBottom: 4,
+  },
+  calendarWeekLabel: {
+    width: '14.2857%',
+    textAlign: 'center',
+    color: '#64748b',
+    fontWeight: '600',
+    fontSize: 12,
+  },
+  calendarGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginBottom: 10,
+  },
+  calendarDayCell: {
+    width: '14.2857%',
+    minHeight: 48,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    paddingVertical: 6,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  calendarDayCellMuted: {
+    backgroundColor: '#f8fafc',
+  },
+  calendarDayCellSelected: {
+    borderColor: '#0f172a',
+    backgroundColor: '#eff6ff',
+  },
+  calendarDayText: {
+    color: '#0f172a',
+    fontWeight: '600',
+    fontSize: 12,
+  },
+  calendarDayTextMuted: {
+    color: '#94a3b8',
+  },
+  calendarDotsRow: {
+    flexDirection: 'row',
+    gap: 4,
+  },
+  calendarDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 999,
   },
   limitBanner: {
     backgroundColor: '#f0fdf4',

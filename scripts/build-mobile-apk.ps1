@@ -6,15 +6,29 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$env:Path = 'C:\Program Files\nodejs;' + $env:Path
 $root = Split-Path $PSScriptRoot -Parent
 $easJson = Join-Path $root 'apps\mobile-worker\eas.json'
 $adb = Join-Path $root 'tools\platform-tools\adb.exe'
-$npx = 'C:\Program Files\nodejs\npx.cmd'
+$npxCmdEntry = Get-Command 'npx.cmd' -ErrorAction SilentlyContinue
+$npxCmd = $null
+if ($npxCmdEntry) {
+    $npxCmd = $npxCmdEntry.Source
+}
+if (-not $npxCmd) {
+    $npxCmd = 'C:\Users\tomek\AppData\Local\Microsoft\WinGet\Packages\OpenJS.NodeJS.LTS_Microsoft.Winget.Source_8wekyb3d8bbwe\node-v24.18.0-win-x64\npx.cmd'
+}
+if (-not (Test-Path $npxCmd)) {
+    throw 'Nie znaleziono npx.cmd. Zainstaluj Node.js LTS i dodaj do PATH.'
+}
+
+$nodeDir = Split-Path -Parent $npxCmd
+if (-not [string]::IsNullOrWhiteSpace($nodeDir)) {
+    $env:Path = "$nodeDir;$env:Path"
+}
 
 $eas = Get-Content $easJson -Raw | ConvertFrom-Json
 $currentUrl = $eas.build.preview.env.EXPO_PUBLIC_API_URL
-$cloudApiUrl = 'https://urlopy-api-svvhqvitka-lm.a.run.app'
+$cloudApiUrl = 'https://urlopy-api-622924376884.europe-central2.run.app'
 
 # 1. Ustal URL API dla buildu preview
 $apiUrl = $null
@@ -59,7 +73,7 @@ if ($currentUrl -eq $apiUrl) {
 # 3. EAS Build
 Push-Location (Join-Path $root 'apps\mobile-worker')
 try {
-    & $npx --yes eas-cli build --platform android --profile preview --non-interactive
+    & $npxCmd --yes eas-cli build --platform android --profile preview --non-interactive
     if ($LASTEXITCODE -ne 0) { throw "EAS build zakonczony bledem (exit $LASTEXITCODE)" }
 } finally {
     Pop-Location
@@ -70,7 +84,7 @@ if ($SkipInstall) { Write-Host "Pominieto instalacje."; exit 0 }
 # 4. Pobierz URL najnowszego buildu
 Push-Location (Join-Path $root 'apps\mobile-worker')
 try {
-    $listRaw = & $npx --yes eas-cli build:list --platform android --limit 1 --status FINISHED --json --non-interactive 2>$null
+    $listRaw = & $npxCmd --yes eas-cli build:list --platform android --limit 1 --status FINISHED --json --non-interactive 2>$null
     $builds  = $listRaw | ConvertFrom-Json
 } finally {
     Pop-Location

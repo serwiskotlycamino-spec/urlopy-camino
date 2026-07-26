@@ -33,6 +33,7 @@ public sealed class ApiClient
     }
 
     public string BaseUrl => _httpClient.BaseAddress?.ToString().TrimEnd('/') ?? string.Empty;
+    public bool LastLeaveRequestsSnapshotIsComplete { get; private set; } = true;
 
     public async Task<LoginResponse> LoginAsync(string email, string password)
     {
@@ -50,7 +51,22 @@ public sealed class ApiClient
 
     public Task<List<LeaveRequest>> GetPendingAsync() => SendAsync<List<LeaveRequest>>(HttpMethod.Get, "leave-requests/pending");
 
-    public Task<List<LeaveRequest>> GetAllLeaveRequestsAsync() => SendAsync<List<LeaveRequest>>(HttpMethod.Get, "leave-requests/all");
+    public async Task<List<LeaveRequest>> GetAllLeaveRequestsAsync()
+    {
+        try
+        {
+            var result = await SendAsync<List<LeaveRequest>>(HttpMethod.Get, "leave-requests/all");
+            LastLeaveRequestsSnapshotIsComplete = true;
+            return result;
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("Cannot GET /leave-requests/all", StringComparison.OrdinalIgnoreCase))
+        {
+            // Backward compatibility for deployments that still expose only /leave-requests/pending.
+            var pendingOnly = await SendAsync<List<LeaveRequest>>(HttpMethod.Get, "leave-requests/pending");
+            LastLeaveRequestsSnapshotIsComplete = false;
+            return pendingOnly;
+        }
+    }
 
     public Task<List<LeaveRequest>> GetMineAsync() => SendAsync<List<LeaveRequest>>(HttpMethod.Get, "leave-requests/mine");
 
@@ -78,16 +94,118 @@ public sealed class ApiClient
 
     public async Task LogoutAsync()
     {
-        await SendAsync<object>(HttpMethod.Post, "auth/logout", new { });
-        _accessToken = null;
-        _refreshToken = null;
+        try
+        {
+            await SendAsync<object>(HttpMethod.Post, "auth/logout", new { });
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // Sesja i tak jest nieważna - lokalne tokeny czyścimy poniżej.
+        }
+        catch (InvalidOperationException)
+        {
+            // Błąd API podczas wylogowania nie powinien blokować lokalnego wylogowania.
+        }
+        finally
+        {
+            _accessToken = null;
+            _refreshToken = null;
+        }
     }
 
     public Task<LeaveRequest> DecideAsync(int leaveRequestId, string decision, string? comment) =>
         SendAsync<LeaveRequest>(HttpMethod.Patch, $"leave-requests/{leaveRequestId}/decision", new { decision, comment });
 
+    public Task<LeaveRequest> CreateLeaveRequestForAdminAsync(int userId, CreateLeaveRequestRequest request) =>
+        SendAsync<LeaveRequest>(HttpMethod.Post, "leave-requests/admin", new { userId, leaveType = request.LeaveType, startDate = request.StartDate, endDate = request.EndDate, reason = request.Reason });
+
+    public Task<LeaveRequest> UpdateLeaveRequestForAdminAsync(int leaveRequestId, UpdateLeaveRequestRequest request) =>
+        UpdateLeaveRequestForAdminInternalAsync(leaveRequestId, request);
+
+    private async Task<LeaveRequest> UpdateLeaveRequestForAdminInternalAsync(int leaveRequestId, UpdateLeaveRequestRequest request)
+    {
+        var payload = new { request.LeaveType, request.StartDate, request.EndDate, request.Reason };
+        Exception? lastRouteError = null;
+        var routes = new (HttpMethod Method, string Path)[]
+        {
+            (HttpMethod.Patch, $"leave-requests/{leaveRequestId}/admin"),
+            (HttpMethod.Patch, $"leave-requests/admin/{leaveRequestId}"),
+            (HttpMethod.Patch, $"leave-requests/{leaveRequestId}"),
+            (HttpMethod.Put, $"leave-requests/{leaveRequestId}/admin"),
+            (HttpMethod.Put, $"leave-requests/{leaveRequestId}"),
+        };
+
+        foreach (var route in routes)
+        {
+            try
+            {
+                return await SendAsync<LeaveRequest>(route.Method, route.Path, payload);
+            }
+            catch (InvalidOperationException ex) when (ShouldTryNextLeaveUpdateRoute(ex.Message))
+            {
+                lastRouteError = ex;
+            }
+        }
+
+        if (lastRouteError is not null)
+        {
+            throw lastRouteError;
+        }
+
+        throw new InvalidOperationException("Nie znaleziono wspieranej trasy API do aktualizacji wniosku.");
+    }
+
+    private static bool ShouldTryNextLeaveUpdateRoute(string message) =>
+        message.Contains("Cannot PATCH", StringComparison.OrdinalIgnoreCase) ||
+        message.Contains("Cannot PUT", StringComparison.OrdinalIgnoreCase) ||
+        message.Contains("Not Found", StringComparison.OrdinalIgnoreCase) ||
+        message.Contains("Forbidden", StringComparison.OrdinalIgnoreCase) ||
+        message.Contains("PENDING", StringComparison.OrdinalIgnoreCase) ||
+        message.Contains("rozpatrz", StringComparison.OrdinalIgnoreCase);
+
     public Task DeleteLeaveRequestForAdminAsync(int leaveRequestId) =>
-        SendAsync<object>(HttpMethod.Delete, $"leave-requests/{leaveRequestId}/admin");
+        DeleteLeaveRequestForAdminInternalAsync(leaveRequestId);
+
+    private async Task DeleteLeaveRequestForAdminInternalAsync(int leaveRequestId)
+    {
+        Exception? lastRouteError = null;
+        var routes = new[]
+        {
+            $"leave-requests/{leaveRequestId}/admin",
+            $"leave-requests/admin/{leaveRequestId}",
+            $"leave-requests/{leaveRequestId}",
+        };
+
+        foreach (var route in routes)
+        {
+            try
+            {
+                await SendAsync<object>(HttpMethod.Delete, route);
+                return;
+            }
+            catch (InvalidOperationException ex) when (ShouldTryNextLeaveDeleteRoute(ex.Message))
+            {
+                lastRouteError = ex;
+            }
+        }
+
+        if (lastRouteError is not null)
+        {
+            throw lastRouteError;
+        }
+
+        throw new InvalidOperationException("Nie znaleziono wspieranej trasy API do usunięcia wniosku.");
+    }
+
+    private static bool ShouldTryNextLeaveDeleteRoute(string message) =>
+        message.Contains("Cannot DELETE", StringComparison.OrdinalIgnoreCase) ||
+        message.Contains("Not Found", StringComparison.OrdinalIgnoreCase) ||
+        message.Contains("Forbidden", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsMissingWorkTripReviewRoute(string message) =>
+        message.Contains("Cannot PATCH", StringComparison.OrdinalIgnoreCase) ||
+        message.Contains("Cannot PUT", StringComparison.OrdinalIgnoreCase) ||
+        message.Contains("Not Found", StringComparison.OrdinalIgnoreCase);
 
     public Task<List<WorkTrip>> GetAllWorkTripsAsync() =>
         SendAsync<List<WorkTrip>>(HttpMethod.Get, "work-trips/all");
@@ -111,7 +229,39 @@ public sealed class ApiClient
         SendAsync<WorkTrip>(HttpMethod.Patch, $"work-trips/{tripId}/hours", request);
 
     public Task<WorkTrip> ReviewWorkTripAsync(int tripId, ReviewWorkTripRequest request) =>
-        SendAsync<WorkTrip>(HttpMethod.Patch, $"work-trips/{tripId}/review", request);
+        ReviewWorkTripInternalAsync(tripId, request);
+
+    private async Task<WorkTrip> ReviewWorkTripInternalAsync(int tripId, ReviewWorkTripRequest request)
+    {
+        Exception? lastRouteError = null;
+        var routes = new (HttpMethod Method, string Path)[]
+        {
+            (HttpMethod.Patch, $"work-trips/{tripId}/review"),
+            (HttpMethod.Patch, $"work-trips/review/{tripId}"),
+            (HttpMethod.Patch, $"work-trips/{tripId}/decision"),
+            (HttpMethod.Put, $"work-trips/{tripId}/review"),
+            (HttpMethod.Put, $"work-trips/review/{tripId}"),
+        };
+
+        foreach (var route in routes)
+        {
+            try
+            {
+                return await SendAsync<WorkTrip>(route.Method, route.Path, request);
+            }
+            catch (InvalidOperationException ex) when (IsMissingWorkTripReviewRoute(ex.Message))
+            {
+                lastRouteError = ex;
+            }
+        }
+
+        if (lastRouteError is not null)
+        {
+            throw lastRouteError;
+        }
+
+        throw new InvalidOperationException("Nie znaleziono wspieranej trasy API do decyzji wyjazdu.");
+    }
 
     public Task DeleteWorkTripAsync(int tripId) =>
         SendAsync<object>(HttpMethod.Delete, $"work-trips/{tripId}");
