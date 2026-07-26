@@ -37,6 +37,7 @@ export class GoogleCalendarService {
 
   private accessToken: string | null = null;
   private accessTokenExpiresAt = 0;
+  private mappingTableReady = false;
 
   constructor(private readonly db: DatabaseService) {}
 
@@ -48,6 +49,8 @@ export class GoogleCalendarService {
     if (!this.isEnabled()) {
       return;
     }
+
+    await this.ensureMappingTable();
 
     const existingEventId = await this.getEventIdForLeave(payload.leaveRequestId);
     if (existingEventId) {
@@ -63,6 +66,8 @@ export class GoogleCalendarService {
     if (!this.isEnabled()) {
       return;
     }
+
+    await this.ensureMappingTable();
 
     const eventId = await this.getEventIdForLeave(leaveRequestId);
     if (!eventId) {
@@ -175,6 +180,22 @@ export class GoogleCalendarService {
     );
 
     return row?.google_event_id ?? null;
+  }
+
+  private async ensureMappingTable(): Promise<void> {
+    if (this.mappingTableReady) {
+      return;
+    }
+
+    await this.db.run(
+      `CREATE TABLE IF NOT EXISTS leave_request_google_events (
+        leave_request_id INTEGER PRIMARY KEY,
+        google_event_id VARCHAR(255) NOT NULL,
+        updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+      )`,
+    );
+
+    this.mappingTableReady = true;
   }
 
   private async saveLeaveEventMapping(leaveRequestId: number, eventId: string): Promise<void> {
