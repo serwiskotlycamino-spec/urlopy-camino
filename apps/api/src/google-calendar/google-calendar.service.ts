@@ -127,11 +127,9 @@ export class GoogleCalendarService {
       colorId: this.getColorId(payload.leaveType),
       start: {
         date: payload.startDate,
-        timeZone: this.timezone,
       },
       end: {
         date: this.getExclusiveEndDate(payload.endDate),
-        timeZone: this.timezone,
       },
       transparency: 'opaque',
       extendedProperties: {
@@ -144,9 +142,17 @@ export class GoogleCalendarService {
   }
 
   private getExclusiveEndDate(endDate: string): string {
-    const parsed = new Date(`${endDate}T00:00:00.000Z`);
-    parsed.setUTCDate(parsed.getUTCDate() + 1);
-    return parsed.toISOString().slice(0, 10);
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(endDate);
+    if (!match) {
+      throw new Error(`Nieprawidlowy format daty urlopu: ${endDate}`);
+    }
+
+    const year = Number(match[1]);
+    const month = Number(match[2]) - 1;
+    const day = Number(match[3]);
+    const nextDay = new Date(Date.UTC(year, month, day + 1));
+
+    return nextDay.toISOString().slice(0, 10);
   }
 
   private getColorId(leaveType: string): string {
