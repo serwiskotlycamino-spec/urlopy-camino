@@ -1,10 +1,14 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import type { CreateLeaveRequestDto } from './dto/create-leave-request.dto';
 import type { UpdateLeaveRequestDto } from './dto/update-leave-request.dto';
+import { GoogleCalendarService } from '../google-calendar/google-calendar.service';
 
 type DbUser = {
   id: number;
+  name: string;
+  email: string;
   role: 'ADMIN' | 'EMPLOYEE';
   manager_id: number | null;
 };
@@ -43,9 +47,12 @@ function daysInclusive(start: string, end: string): number {
 
 @Injectable()
 export class LeaveRequestsService {
+  private readonly logger = new Logger(LeaveRequestsService.name);
+
   constructor(
     private readonly db: DatabaseService,
     private readonly notifications: NotificationsService,
+    private readonly googleCalendar: GoogleCalendarService,
   ) {}
 
   async create(input: {
@@ -132,7 +139,7 @@ export class LeaveRequestsService {
       `SELECT lr.*, u.name as user_name 
        FROM leave_requests lr
        JOIN users u ON lr.user_id = u.id
-       WHERE lr.status IN ('PENDING', 'APPROVED', 'REJECTED')
+       WHERE lr.status = 'PENDING'
        ORDER BY lr.created_at DESC`,
     );
   }
@@ -152,9 +159,80 @@ export class LeaveRequestsService {
       `SELECT lr.*, u.name as user_name 
        FROM leave_requests lr
        JOIN users u ON lr.user_id = u.id
-       WHERE lr.status IN ('PENDING', 'APPROVED', 'REJECTED')
        ORDER BY lr.created_at DESC`,
     );
+  }
+
+  async createForAdmin(adminId: number, userId: number, dto: CreateLeaveRequestDto) {
+    const admin = await this.db.get<DbUser>('SELECT id, role FROM users WHERE id = $1', [adminId]);
+    if (!admin || admin.role !== 'ADMIN') {
+      throw new BadRequestException('Tworzyc wniosek moze tylko administrator.');
+    }
+
+    const user = await this.db.get<DbUser>('SELECT id FROM users WHERE id = $1', [userId]);
+    if (!user) {
+      throw new NotFoundException('Nie znaleziono użytkownika.');
+    }
+
+    if (new Date(dto.endDate).getTime() < new Date(dto.startDate).getTime()) {
+      throw new BadRequestException('Data zakonczenia nie moze byc wczesniejsza niz data rozpoczecia.');
+    }
+
+    await this.validateOnDemandLimit(userId, dto.leaveType, dto.startDate, dto.endDate);
+
+    await this.db.run(
+      `INSERT INTO leave_requests (user_id, leave_type, start_date, end_date, reason, status, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, 'PENDING', NOW(), NOW())`,
+      [userId, dto.leaveType, dto.startDate, dto.endDate, dto.reason ?? null],
+    );
+
+    const created = await this.db.get<{ id: number }>(
+      'SELECT id FROM leave_requests WHERE user_id = $1 ORDER BY id DESC LIMIT 1',
+      [userId],
+    );
+
+    const requestId = created?.id;
+    if (!requestId) {
+      throw new NotFoundException('Nie znaleziono nowo utworzonego wniosku.');
+    }
+
+    return this.getById(Number(requestId));
+  }
+
+  async updateForAdmin(requestId: number, adminId: number, dto: UpdateLeaveRequestDto) {
+    const admin = await this.db.get<DbUser>('SELECT id, role FROM users WHERE id = $1', [adminId]);
+    if (!admin || admin.role !== 'ADMIN') {
+      throw new BadRequestException('Edytowac wniosek moze tylko administrator.');
+    }
+
+    const request = await this.getRawById(requestId);
+    if (!request) {
+      throw new NotFoundException('Nie znaleziono wniosku.');
+    }
+
+    if (new Date(dto.endDate).getTime() < new Date(dto.startDate).getTime()) {
+      throw new BadRequestException('Data zakonczenia nie moze byc wczesniejsza niz data rozpoczecia.');
+    }
+
+    await this.validateOnDemandLimit(request.user_id, dto.leaveType, dto.startDate, dto.endDate, requestId);
+
+    await this.db.run(
+      `UPDATE leave_requests
+       SET leave_type = $1,
+           start_date = $2,
+           end_date = $3,
+           reason = $4,
+           updated_at = NOW()
+       WHERE id = $5`,
+      [dto.leaveType, dto.startDate, dto.endDate, dto.reason ?? null, requestId],
+    );
+
+    const updatedRequest = await this.getById(requestId);
+    if (updatedRequest.status === 'APPROVED') {
+      await this.syncGoogleCalendarForApprovedRequest(requestId);
+    }
+
+    return updatedRequest;
   }
 
   async deleteForAdmin(adminId: number, requestId: number) {
@@ -177,6 +255,8 @@ export class LeaveRequestsService {
        WHERE id = $1`,
       [requestId],
     );
+
+    await this.removeGoogleCalendarEvent(requestId);
 
     await this.notifications.createInApp(
       request.user_id,
@@ -212,6 +292,12 @@ export class LeaveRequestsService {
        WHERE id = $3`,
       [decision, comment ?? null, requestId],
     );
+
+    if (decision === 'APPROVED') {
+      await this.syncGoogleCalendarForApprovedRequest(requestId);
+    } else {
+      await this.removeGoogleCalendarEvent(requestId);
+    }
 
     if (decision === 'PENDING') {
       return this.getById(requestId);
@@ -264,6 +350,8 @@ export class LeaveRequestsService {
       `UPDATE leave_requests SET status = 'CANCELLED', updated_at = NOW() WHERE id = $1`,
       [requestId],
     );
+
+    await this.removeGoogleCalendarEvent(requestId);
     return this.getById(requestId);
   }
 
@@ -298,7 +386,12 @@ export class LeaveRequestsService {
       [dto.leaveType, dto.startDate, dto.endDate, dto.reason ?? null, requestId],
     );
 
-    return this.getById(requestId);
+    const updatedRequest = await this.getById(requestId);
+    if (updatedRequest.status === 'APPROVED') {
+      await this.syncGoogleCalendarForApprovedRequest(requestId);
+    }
+
+    return updatedRequest;
   }
 
   async getById(id: number) {
@@ -311,6 +404,58 @@ export class LeaveRequestsService {
 
   private async getRawById(id: number) {
     return this.db.get<DbLeaveRequest>('SELECT * FROM leave_requests WHERE id = $1', [id]);
+  }
+
+  private async syncGoogleCalendarForApprovedRequest(requestId: number): Promise<void> {
+    try {
+      if (!this.googleCalendar.isEnabled()) {
+        return;
+      }
+
+      const request = await this.db.get<DbLeaveRequest>(
+        'SELECT * FROM leave_requests WHERE id = $1 AND status = $2',
+        [requestId, 'APPROVED'],
+      );
+      if (!request) {
+        return;
+      }
+
+      const user = await this.db.get<Pick<DbUser, 'name' | 'email'>>(
+        'SELECT name, email FROM users WHERE id = $1',
+        [request.user_id],
+      );
+
+      await this.googleCalendar.upsertApprovedLeave({
+        leaveRequestId: request.id,
+        userName: user?.name ?? `Uzytkownik #${request.user_id}`,
+        userEmail: user?.email ?? '-',
+        leaveType: request.leave_type,
+        startDate: request.start_date,
+        endDate: request.end_date,
+        reason: request.reason,
+        managerComment: request.manager_comment,
+      });
+    } catch (error) {
+      // Nie blokujemy decyzji biznesowej, gdy integracja Google chwilowo nie dziala.
+      this.logger.warn(
+        `Google Calendar sync failed for approved leave #${requestId}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  private async removeGoogleCalendarEvent(requestId: number): Promise<void> {
+    try {
+      if (!this.googleCalendar.isEnabled()) {
+        return;
+      }
+
+      await this.googleCalendar.deleteLeaveEvent(requestId);
+    } catch (error) {
+      // Nie blokujemy zmiany statusu, gdy usuniecie eventu Google sie nie powiedzie.
+      this.logger.warn(
+        `Google Calendar delete failed for leave #${requestId}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
   }
 
   private async validateOnDemandLimit(
