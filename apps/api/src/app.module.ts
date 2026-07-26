@@ -20,6 +20,7 @@ import { WorkTripsController } from './work-trips/work-trips.controller';
 import { WorkTripsService } from './work-trips/work-trips.service';
 import { LeaveLimitsController } from './leave-limits/leave-limits.controller';
 import { LeaveLimitsService } from './leave-limits/leave-limits.service';
+import { GoogleCalendarService } from './google-calendar/google-calendar.service';
 
 @Module({
   imports: [],
@@ -47,6 +48,7 @@ import { LeaveLimitsService } from './leave-limits/leave-limits.service';
     OneDriveService,
     WorkTripsService,
     LeaveLimitsService,
+    GoogleCalendarService,
   ],
 })
 export class AppModule {}
