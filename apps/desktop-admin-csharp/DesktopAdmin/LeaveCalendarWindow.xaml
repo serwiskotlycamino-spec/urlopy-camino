@@ -1,0 +1,154 @@
+<Window x:Class="DesktopAdmin.LeaveCalendarWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Kalendarz wniosków urlopowych"
+        Height="900"
+        Width="1400"
+        MinHeight="700"
+        MinWidth="1000"
+        WindowStartupLocation="CenterOwner">
+    <Grid Margin="14">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="250" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0"
+                   Text="Kalendarz wniosków (Przetwarzane + Zatwierdzone)"
+                   FontSize="22"
+                   FontWeight="Bold"
+                   Margin="0,0,0,10" />
+
+        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,10">
+            <Button x:Name="RefreshButton"
+                    Content="Odśwież"
+                    Style="{StaticResource InfoButtonStyle}"
+                    Width="120"
+                    Margin="0,0,10,0"
+                    Click="RefreshButton_Click" />
+            <Button x:Name="AddNewRequestButton"
+                    Content="Dodaj nowy wniosek"
+                    Style="{StaticResource PrimaryButtonStyle}"
+                    Width="150"
+                    Margin="0,0,10,0"
+                    Click="AddNewRequestButton_Click" />
+            <TextBlock x:Name="SummaryTextBlock"
+                       VerticalAlignment="Center"
+                       Foreground="#444" />
+        </StackPanel>
+
+        <Grid Grid.Row="2" Margin="0,0,0,10">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="590" />
+                <ColumnDefinition Width="10" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <Border Grid.Column="0" BorderBrush="#D0D0D0" BorderThickness="1" CornerRadius="6" Padding="0">
+                <Calendar x:Name="RequestsCalendar"
+                          Margin="0"
+                          HorizontalAlignment="Center"
+                          VerticalAlignment="Center"
+                          FontSize="15"
+                          SelectionMode="SingleDate"
+                          DisplayDateChanged="RequestsCalendar_DisplayDateChanged"
+                          DisplayModeChanged="RequestsCalendar_DisplayModeChanged"
+                          SelectedDatesChanged="RequestsCalendar_SelectedDatesChanged"
+                          PreviewMouseDoubleClick="RequestsCalendar_PreviewMouseDoubleClick">
+                    <Calendar.LayoutTransform>
+                        <ScaleTransform ScaleX="2.0" ScaleY="2.0" />
+                    </Calendar.LayoutTransform>
+                </Calendar>
+            </Border>
+
+            <Border Grid.Column="2" BorderBrush="#D0D0D0" BorderThickness="1" CornerRadius="6" Padding="12">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0"
+                               Text="Wnioski z widocznego miesiąca (dwuklik = edycja)"
+                               FontWeight="SemiBold"
+                               Margin="0,0,0,10" />
+
+                    <DataGrid Grid.Row="1"
+                              x:Name="MonthRequestsGrid"
+                              AutoGenerateColumns="False"
+                              CanUserAddRows="False"
+                              SelectionMode="Single"
+                              IsReadOnly="True"
+                              MouseDoubleClick="MonthRequestsGrid_MouseDoubleClick">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="ID" Binding="{Binding Id}" Width="50" />
+                            <DataGridTextColumn Header="Pracownik" Binding="{Binding UserName}" Width="130" />
+                            <DataGridTextColumn Header="Typ" Binding="{Binding LeaveTypePl}" Width="110" />
+                            <DataGridTextColumn Header="Od" Binding="{Binding StartDateOnly}" Width="90" />
+                            <DataGridTextColumn Header="Do" Binding="{Binding EndDateOnly}" Width="90" />
+                            <DataGridTextColumn Header="Status" Binding="{Binding StatusPl}" Width="100" />
+                            <DataGridTextColumn Header="Notatka" Binding="{Binding Reason}" Width="*" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <Border Grid.Row="3" BorderBrush="#D0D0D0" BorderThickness="1" CornerRadius="6" Padding="12" Margin="0,0,0,10">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <TextBlock Grid.Row="0"
+                           x:Name="SelectedDayHeaderTextBlock"
+                           Text="Wnioski dla wybranego dnia"
+                           FontWeight="SemiBold"
+                           Margin="0,0,0,10" />
+
+                <DataGrid Grid.Row="1"
+                          x:Name="SelectedDateRequestsGrid"
+                          AutoGenerateColumns="False"
+                          CanUserAddRows="False"
+                          SelectionMode="Single"
+                          IsReadOnly="True"
+                          MouseDoubleClick="SelectedDateRequestsGrid_MouseDoubleClick">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="ID" Binding="{Binding Id}" Width="50" />
+                        <DataGridTextColumn Header="Pracownik" Binding="{Binding UserName}" Width="130" />
+                        <DataGridTextColumn Header="Typ" Binding="{Binding LeaveTypePl}" Width="110" />
+                        <DataGridTextColumn Header="Od" Binding="{Binding StartDateOnly}" Width="90" />
+                        <DataGridTextColumn Header="Do" Binding="{Binding EndDateOnly}" Width="90" />
+                        <DataGridTextColumn Header="Status" Binding="{Binding StatusPl}" Width="100" />
+                        <DataGridTextColumn Header="Notatka pracownika" Binding="{Binding Reason}" Width="150" />
+                        <DataGridTextColumn Header="Komentarz szefa" Binding="{Binding ManagerComment}" Width="*" />
+                    </DataGrid.Columns>
+                </DataGrid>
+            </Grid>
+        </Border>
+
+        <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button x:Name="ApproveButton"
+                Content="Przyjmij"
+                Style="{StaticResource PrimaryButtonStyle}"
+                Width="120"
+                Margin="0,0,10,0"
+                Click="ApproveButton_Click" />
+            <Button x:Name="RejectButton"
+                Content="Odrzuć"
+                Style="{StaticResource DangerButtonStyle}"
+                Width="120"
+                Margin="0,0,10,0"
+                Click="RejectButton_Click" />
+            <Button x:Name="CloseButton"
+                    Content="Zamknij"
+                    Style="{StaticResource DangerButtonStyle}"
+                    Width="120"
+                    Click="CloseButton_Click" />
+        </StackPanel>
+    </Grid>
+</Window>

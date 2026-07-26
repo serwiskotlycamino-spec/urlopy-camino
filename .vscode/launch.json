@@ -6,7 +6,7 @@
       "type": "coreclr",
       "request": "launch",
       "preLaunchTask": "build-desktop-admin",
-      "program": "${workspaceFolder}/apps/desktop-admin-csharp/DesktopAdmin/bin/Debug/net8.0-windows/DesktopAdmin.dll",
+      "program": "${workspaceFolder}/apps/desktop-admin-csharp/DesktopAdmin/bin/Debug/net8.0-windows/SystemUrlopowyCamino.dll",
       "args": [],
       "cwd": "${workspaceFolder}/apps/desktop-admin-csharp/DesktopAdmin",
       "stopAtEntry": false,

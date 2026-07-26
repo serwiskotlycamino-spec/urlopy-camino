@@ -9,52 +9,31 @@ namespace DesktopAdmin;
 public partial class LoginWindow : Window
 {
     private readonly AppSettings _settings = AppSettings.Load();
+    private readonly LeaveArchiveStore _archiveStore;
+    private readonly string? _rememberedUserEmail;
+    private bool _isInitializing;
 
     public LoginWindow()
     {
+        _archiveStore = new LeaveArchiveStore(AppDataPaths.StorageDirectory);
+        var loginMemory = _archiveStore.LoadLoginMemory();
+        _rememberedUserEmail = loginMemory?.SelectedUserEmail;
+
         InitializeComponent();
 
+        _isInitializing = true;
         WindowPersistence.Attach(this, _settings, "Login");
 
-        ApiUrlTextBox.Text = _settings.ApiUrl;
-        RememberMeCheckBox.IsChecked = _settings.RememberMe;
+        RememberMeCheckBox.IsChecked = loginMemory?.RememberMe == true || _settings.RememberMe;
         PasswordBox.Password = "12345678";
+        _isInitializing = false;
 
         Loaded += LoginWindow_Loaded;
     }
 
     private async void LoginWindow_Loaded(object sender, RoutedEventArgs e)
     {
-        // Load users from API
         await LoadUsersAsync();
-
-        if (_settings.RememberMe && _settings.SavedSession != null)
-        {
-            try
-            {
-                var apiClient = new ApiClient(_settings.ApiUrl);
-                apiClient.RestoreSession(_settings.SavedSession);
-
-                // Attempt to refresh token proactively if a saved session exists
-                // This will throw UnauthorizedAccessException if refresh token is expired/invalid
-                await apiClient.GetUsersAsync(); 
-
-                OpenNextWindow(apiClient, _settings.SavedSession);
-                return;
-            }
-            catch (UnauthorizedAccessException)
-            {
-                // Saved session is invalid, clear it and proceed to normal login
-                _settings.SavedSession = null;
-                _settings.RememberMe = false;
-                _settings.Save();
-                ErrorTextBlock.Text = "Zapisana sesja wygasła. Zaloguj się ponownie.";
-            }
-            catch (Exception ex)
-            {
-                ErrorTextBlock.Text = "Błąd automatycznego logowania: " + ex.Message;
-            }
-        }
     }
 
     private async Task LoadUsersAsync()
@@ -65,9 +44,13 @@ public partial class LoginWindow : Window
             var users = await apiClient.GetLoginListAsync();
             UserComboBox.ItemsSource = users.ToList();
 
-            if (!string.IsNullOrEmpty(_settings.LastEmail))
+            var emailToRestore = !string.IsNullOrWhiteSpace(_rememberedUserEmail)
+                ? _rememberedUserEmail
+                : _settings.LastEmail;
+
+            if (!string.IsNullOrEmpty(emailToRestore))
             {
-                UserComboBox.SelectedValue = _settings.LastEmail;
+                UserComboBox.SelectedValue = emailToRestore;
             }
         }
         catch (Exception ex)
@@ -93,7 +76,7 @@ public partial class LoginWindow : Window
     {
         ErrorTextBlock.Text = string.Empty;
 
-        var apiUrl = ApiUrlTextBox.Text.Trim();
+        var apiUrl = _settings.ApiUrl;
         var email = UserComboBox.SelectedValue?.ToString();
         var password = ShowPasswordCheckBox.IsChecked == true ? PasswordTextBox.Text : PasswordBox.Password;
 
@@ -110,20 +93,18 @@ public partial class LoginWindow : Window
             var apiClient = new ApiClient(apiUrl);
             var session = await apiClient.LoginAsync(email, password);
 
-            _settings.ApiUrl = apiUrl;
-            _settings.LastEmail = UserComboBox.SelectedValue?.ToString();
-            _settings.RememberMe = RememberMeCheckBox.IsChecked == true;
-            
-            if (_settings.RememberMe)
+            _settings.Save();
+
+            if (RememberMeCheckBox.IsChecked == true)
             {
-                _settings.SavedSession = session;
+                _archiveStore.SaveLoginMemory(email, email);
+                _settings.RememberMe = true;
             }
             else
             {
-                _settings.SavedSession = null;
+                _archiveStore.ClearLoginMemory();
+                _settings.RememberMe = false;
             }
-            
-            _settings.Save();
 
             OpenNextWindow(apiClient, session);
         }
@@ -141,7 +122,7 @@ public partial class LoginWindow : Window
     {
         PasswordBox.Clear();
         ErrorTextBlock.Text = string.Empty;
-        EmailTextBox.Focus();
+        UserComboBox.Focus();
     }
 
     private void ShowPassword_Checked(object sender, RoutedEventArgs e)
@@ -158,26 +139,11 @@ public partial class LoginWindow : Window
         PasswordTextBox.Visibility = Visibility.Collapsed;
     }
 
-    private void ApiUrlTextBox_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
-    {
-        if (_settings != null)
-        {
-            _settings.SavedSession = null;
-            _settings.RememberMe = false;
-            _settings.Save();
-
-            if (RememberMeCheckBox != null)
-            {
-                RememberMeCheckBox.IsChecked = false;
-            }
-        }
-    }
-
     private void UserComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (UserComboBox.SelectedItem is UserSummary selectedUser)
+        if (_isInitializing)
         {
-            EmailTextBox.Text = selectedUser.Email;
+            return;
         }
     }
 }

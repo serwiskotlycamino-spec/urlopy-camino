@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using System.Globalization;
 
 namespace DesktopAdmin.Models;
 
@@ -36,6 +37,19 @@ public sealed class UserSummary
 
     [JsonPropertyName("role")]
     public string Role { get; set; } = string.Empty;
+
+    public string RolePl
+    {
+        get
+        {
+            return Role switch
+            {
+                "ADMIN" => "Administrator",
+                "EMPLOYEE" => "Pracownik",
+                _ => Role,
+            };
+        }
+    }
 
     [JsonPropertyName("managerId")]
     public int? ManagerId { get; set; }
@@ -122,6 +136,7 @@ public sealed class LeaveRequest
                 "PENDING" => "Przetwarzany",
                 "APPROVED" => "Zatwierdzony",
                 "REJECTED" => "Odrzucony",
+                "CANCELLED" => "Anulowany",
                 _ => Status,
             };
         }
@@ -132,6 +147,28 @@ public sealed class LeaveRequest
 
     [JsonPropertyName("created_at")]
     public string CreatedAt { get; set; } = string.Empty;
+
+    public DateTime CreatedAtValue
+    {
+        get
+        {
+            if (DateTime.TryParse(CreatedAt, CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out var parsed))
+            {
+                return parsed;
+            }
+
+            if (DateTime.TryParse(CreatedAt, out parsed))
+            {
+                return parsed;
+            }
+
+            return DateTime.MinValue;
+        }
+    }
+
+    public string CreatedAtDisplay => CreatedAtValue == DateTime.MinValue
+        ? CreatedAt
+        : CreatedAtValue.ToString("HH:mm dd.MM.yyyy");
 }
 
 public sealed class MailSettings
@@ -199,6 +236,9 @@ public sealed class UpdateRoleRequest
 
 public sealed class UpdateUserSettingsRequest
 {
+    [JsonPropertyName("id")]
+    public int? Id { get; set; }
+
     [JsonPropertyName("name")]
     public string? Name { get; set; }
 
@@ -246,6 +286,21 @@ public sealed class UpdateMailSettingsRequest
 }
 
 public sealed class CreateLeaveRequestRequest
+{
+    [JsonPropertyName("leaveType")]
+    public string LeaveType { get; set; } = "ANNUAL";
+
+    [JsonPropertyName("startDate")]
+    public string StartDate { get; set; } = string.Empty;
+
+    [JsonPropertyName("endDate")]
+    public string EndDate { get; set; } = string.Empty;
+
+    [JsonPropertyName("reason")]
+    public string? Reason { get; set; }
+}
+
+public sealed class UpdateLeaveRequestRequest
 {
     [JsonPropertyName("leaveType")]
     public string LeaveType { get; set; } = "ANNUAL";
@@ -324,6 +379,19 @@ public sealed class WorkTrip
 
     [JsonPropertyName("trip_date")]
     public string TripDate { get; set; } = string.Empty;
+
+    public string TripDatePl
+    {
+        get
+        {
+            if (DateTime.TryParse(TripDate, out var date))
+            {
+                return date.ToString("dd.MM.yyyy");
+            }
+
+            return TripDate;
+        }
+    }
 
     [JsonPropertyName("start_time")]
     public string StartTime { get; set; } = string.Empty;

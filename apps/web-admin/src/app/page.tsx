@@ -127,6 +127,7 @@ export default function Home() {
   const [tripBusyId, setTripBusyId] = useState<number | null>(null);
   const [uploadBusyId, setUploadBusyId] = useState<number | null>(null);
   const [tripComment, setTripComment] = useState("");
+  const [editedTripHours, setEditedTripHours] = useState<Record<number, { startTime: string; endTime: string }>>({});
   const [error, setError] = useState("");
 
   const canModerate = useMemo(() => user?.role === "MANAGER" || user?.role === "ADMIN", [user]);
@@ -410,7 +411,7 @@ export default function Home() {
     await loadPending();
   }
 
-  async function decideTrip(id: number, decision: "APPROVED" | "REJECTED") {
+  async function decideTrip(id: number, decision: "APPROVED" | "REJECTED" | "ADJUSTED") {
     if (!user || !token) {
       return;
     }
@@ -418,15 +419,23 @@ export default function Home() {
     setTripBusyId(id);
     setError("");
 
+    const hours = editedTripHours[id];
+    const body: { decision: "APPROVED" | "REJECTED" | "ADJUSTED"; comment?: string; startTime?: string; endTime?: string } = {
+      decision,
+      comment: tripComment.trim() || undefined,
+    };
+
+    if (decision === "ADJUSTED" && hours) {
+      body.startTime = hours.startTime;
+      body.endTime = hours.endTime;
+    }
+
     const res = await authFetch(`${API_URL}/work-trips/${id}/review`, {
       method: "PATCH",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        decision,
-        comment: tripComment.trim() || undefined,
-      }),
+      body: JSON.stringify(body),
     });
 
     setTripBusyId(null);
@@ -437,6 +446,7 @@ export default function Home() {
     }
 
     setTripComment("");
+    setEditedTripHours({});
     await loadPendingTrips();
   }
 
@@ -918,7 +928,37 @@ export default function Home() {
                 <p>Miejsce: {trip.destination || "-"}</p>
                 <p>Opis: {trip.description || "-"}</p>
 
-                <div className="mt-3 flex gap-2">
+                <div className="mt-3 space-y-2">
+                  <p className="text-sm font-medium">Edycja godzin (opcjonalnie):</p>
+                  <div className="grid gap-2 md:grid-cols-2">
+                    <input
+                      type="time"
+                      className="rounded border border-slate-300 p-2"
+                      placeholder="Godzina początkowa"
+                      value={editedTripHours[trip.id]?.startTime || ""}
+                      onChange={(e) => {
+                        setEditedTripHours({
+                          ...editedTripHours,
+                          [trip.id]: { ...editedTripHours[trip.id], startTime: e.target.value, endTime: editedTripHours[trip.id]?.endTime || "" }
+                        });
+                      }}
+                    />
+                    <input
+                      type="time"
+                      className="rounded border border-slate-300 p-2"
+                      placeholder="Godzina końcowa"
+                      value={editedTripHours[trip.id]?.endTime || ""}
+                      onChange={(e) => {
+                        setEditedTripHours({
+                          ...editedTripHours,
+                          [trip.id]: { ...editedTripHours[trip.id], startTime: editedTripHours[trip.id]?.startTime || "", endTime: e.target.value }
+                        });
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div className="mt-3 flex flex-wrap gap-2">
                   <button
                     disabled={tripBusyId === trip.id}
                     className="rounded bg-emerald-600 px-3 py-2 text-white disabled:opacity-50"
@@ -928,6 +968,17 @@ export default function Home() {
                   >
                     Zatwierdz
                   </button>
+                  {editedTripHours[trip.id] && editedTripHours[trip.id].startTime && editedTripHours[trip.id].endTime && (
+                    <button
+                      disabled={tripBusyId === trip.id}
+                      className="rounded bg-blue-600 px-3 py-2 text-white disabled:opacity-50"
+                      onClick={() => {
+                        void decideTrip(trip.id, "ADJUSTED");
+                      }}
+                    >
+                      Zaproponuj zmiane
+                    </button>
+                  )}
                   <button
                     disabled={tripBusyId === trip.id}
                     className="rounded bg-rose-600 px-3 py-2 text-white disabled:opacity-50"

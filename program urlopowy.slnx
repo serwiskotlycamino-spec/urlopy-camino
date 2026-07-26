@@ -1,0 +1,6 @@
+<Solution>
+  <Folder Name="/apps/" />
+  <Folder Name="/apps/desktop-admin-csharp/">
+    <Project Path="apps/desktop-admin-csharp/DesktopAdmin/DesktopAdmin.csproj" />
+  </Folder>
+</Solution>

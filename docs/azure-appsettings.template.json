@@ -60,6 +60,26 @@
     "slotSetting": true
   },
   {
+    "name": "GOOGLE_CALENDAR_ID",
+    "value": "your-calendar-id@group.calendar.google.com",
+    "slotSetting": false
+  },
+  {
+    "name": "GOOGLE_SERVICE_ACCOUNT_JSON",
+    "value": "{\"type\":\"service_account\",\"project_id\":\"your-project-id\",\"private_key\":\"-----BEGIN PRIVATE KEY-----\\n...\\n-----END PRIVATE KEY-----\\n\",\"client_email\":\"service-account@your-project-id.iam.gserviceaccount.com\",\"token_uri\":\"https://oauth2.googleapis.com/token\"}",
+    "slotSetting": true
+  },
+  {
+    "name": "GOOGLE_CALENDAR_TIMEZONE",
+    "value": "Europe/Warsaw",
+    "slotSetting": false
+  },
+  {
+    "name": "GOOGLE_CALENDAR_LEAVE_TITLE_PREFIX",
+    "value": "Urlop",
+    "slotSetting": false
+  },
+  {
     "name": "MS_TENANT_ID",
     "value": "CHANGE_ME_TENANT_ID",
     "slotSetting": false

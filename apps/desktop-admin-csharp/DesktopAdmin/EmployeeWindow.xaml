@@ -33,6 +33,7 @@
             <Button Grid.Column="1"
                 x:Name="LogoutButton"
                 Content="Wyloguj"
+                Style="{StaticResource NeutralButtonStyle}"
                 Width="110"
                 Margin="0,0,8,0"
                 Click="LogoutButton_Click" />
@@ -40,6 +41,7 @@
             <Button Grid.Column="2"
                 x:Name="CloseButton"
                 Content="Zamknij"
+                Style="{StaticResource DangerButtonStyle}"
                 Width="100"
                 Click="CloseButton_Click" />
         </Grid>
@@ -75,7 +77,7 @@
                 <TextBlock Grid.Column="6" Text="Powód" VerticalAlignment="Center" />
                 <TextBox Grid.Column="7" x:Name="ReasonTextBox" Margin="6,0,10,0" />
 
-                <Button Grid.Column="8" x:Name="CreateButton" Content="Złóż" Click="CreateButton_Click" />
+                <Button Grid.Column="8" x:Name="CreateButton" Content="Złóż" Style="{StaticResource PrimaryButtonStyle}" Click="CreateButton_Click" />
             </Grid>
         </Border>
 
@@ -98,7 +100,7 @@
         </DataGrid>
 
         <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Left">
-            <Button x:Name="RefreshButton" Content="Odśwież" Width="120" Click="RefreshButton_Click" />
+            <Button x:Name="RefreshButton" Content="Odśwież" Width="120" Style="{StaticResource InfoButtonStyle}" Click="RefreshButton_Click" />
             <TextBlock x:Name="StatusTextBlock" Margin="16,8,0,0" Foreground="#444" />
         </StackPanel>
     </Grid>

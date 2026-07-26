@@ -5,6 +5,7 @@ import { ValidationPipe } from '@nestjs/common';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const corsRaw = process.env.CORS_ORIGINS?.trim();
+  const localhostRegex = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i;
 
   if (!corsRaw || corsRaw === '*') {
     app.enableCors({
@@ -18,7 +19,19 @@ async function bootstrap() {
       .filter(Boolean);
 
     app.enableCors({
-      origin: corsOrigins,
+      origin: (origin, callback) => {
+        if (!origin) {
+          callback(null, true);
+          return;
+        }
+
+        if (localhostRegex.test(origin) || corsOrigins.includes(origin)) {
+          callback(null, true);
+          return;
+        }
+
+        callback(new Error('CORS origin blocked'), false);
+      },
       credentials: false,
     });
   }

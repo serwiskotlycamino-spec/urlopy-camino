@@ -210,6 +210,14 @@ export class AuthService {
       throw new ForbiddenException('Brak uprawnien do edycji uzytkownika.');
     }
 
+    const nextUserId = input.id ?? target.id;
+    if (nextUserId !== target.id) {
+      const existingUserId = await this.db.get<{ id: number }>('SELECT id FROM users WHERE id = $1', [nextUserId]);
+      if (existingUserId) {
+        throw new BadRequestException('Uzytkownik z takim ID juz istnieje.');
+      }
+    }
+
     const nextName = input.name?.trim() || target.name;
     const nextEmail = input.email?.trim().toLowerCase() || target.email;
 
@@ -230,18 +238,30 @@ export class AuthService {
 
     await this.db.run(
       `UPDATE users
-       SET name = $1, email = $2, manager_id = $3
-       WHERE id = $4`,
-      [nextName, nextEmail, nextManagerId, userId],
+       SET id = $1, name = $2, email = $3, manager_id = $4
+       WHERE id = $5`,
+      [nextUserId, nextName, nextEmail, nextManagerId, userId],
     );
+
+    if (nextUserId !== userId) {
+      await this.db.run('UPDATE users SET manager_id = $1 WHERE manager_id = $2', [nextUserId, userId]);
+      await this.db.run('UPDATE leave_requests SET user_id = $1 WHERE user_id = $2', [nextUserId, userId]);
+      await this.db.run('UPDATE leave_requests SET manager_id = $1 WHERE manager_id = $2', [nextUserId, userId]);
+      await this.db.run('UPDATE work_trips SET user_id = $1 WHERE user_id = $2', [nextUserId, userId]);
+      await this.db.run('UPDATE notifications SET user_id = $1 WHERE user_id = $2', [nextUserId, userId]);
+      await this.db.run('UPDATE refresh_tokens SET user_id = $1 WHERE user_id = $2', [nextUserId, userId]);
+      await this.db.run('UPDATE leave_limits SET user_id = $1 WHERE user_id = $2', [nextUserId, userId]);
+      await this.db.run('UPDATE leave_limits SET updated_by = $1 WHERE updated_by = $2', [nextUserId, userId]);
+      await this.db.run('UPDATE leave_request_attachments SET uploaded_by = $1 WHERE uploaded_by = $2', [nextUserId, userId]);
+    }
 
     if (input.password && input.password.trim().length > 0) {
       const passwordHash = await hash(input.password, 10);
-      await this.db.run('UPDATE users SET password = $1 WHERE id = $2', [passwordHash, userId]);
+      await this.db.run('UPDATE users SET password = $1 WHERE id = $2', [passwordHash, nextUserId]);
     }
 
     const updated = await this.db.get<UserSummary>('SELECT id, name, email, role, manager_id FROM users WHERE id = $1', [
-      userId,
+      nextUserId,
     ]);
 
     if (!updated) {

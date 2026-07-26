@@ -6,7 +6,7 @@ namespace DesktopAdmin.Services;
 public sealed class AppSettings
 {
     private static readonly string SettingsPath = Path.Combine(
-        AppContext.BaseDirectory,
+        AppDataPaths.StorageDirectory,
         "settings.json");
 
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -15,13 +15,21 @@ public sealed class AppSettings
         PropertyNameCaseInsensitive = true,
     };
 
-    public string ApiUrl { get; set; } = "https://urlopy-api-svvhqvitka-lm.a.run.app";
+    public string ApiUrl { get; set; } = "https://urlopy-api-622924376884.europe-central2.run.app";
 
     public string LastEmail { get; set; } = string.Empty;
 
     public bool RememberMe { get; set; } = false;
 
     public Models.LoginResponse? SavedSession { get; set; }
+
+    public string CompanyName { get; set; } = string.Empty;
+
+    public string CompanyAddress { get; set; } = string.Empty;
+
+    public string CompanyTaxId { get; set; } = string.Empty;
+
+    public string CompanyPhone { get; set; } = string.Empty;
 
     // Window geometry per window key
     public Dictionary<string, WindowGeometry> Windows { get; set; } = new();

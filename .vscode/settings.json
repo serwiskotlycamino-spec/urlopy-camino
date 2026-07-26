@@ -1,3 +1,4 @@
 {
-    "CodeGPT.apiKey": "Google AI Studio"
+    "CodeGPT.apiKey": "Google AI Studio",
+    "dotnet.defaultSolution": "program urlopowy.sln"
 }

@@ -52,6 +52,18 @@ export class LeaveRequestsController {
   }
 
   @Roles('ADMIN')
+  @Post('admin')
+  createForAdmin(@CurrentUser() user: AuthUser, @Body() body: CreateLeaveRequestDto & { userId: number }) {
+    return this.leaveRequestsService.createForAdmin(user.id, body.userId, body);
+  }
+
+  @Roles('ADMIN')
+  @Patch(':id/admin')
+  updateForAdmin(@Param('id') id: string, @CurrentUser() user: AuthUser, @Body() body: UpdateLeaveRequestDto) {
+    return this.leaveRequestsService.updateForAdmin(Number(id), user.id, body);
+  }
+
+  @Roles('ADMIN')
   @Patch(':id/decision')
   decide(@Param('id') id: string, @CurrentUser() user: AuthUser, @Body() body: LeaveDecisionDto) {
     return this.leaveRequestsService.decide(Number(id), user.id, body.decision, body.comment);

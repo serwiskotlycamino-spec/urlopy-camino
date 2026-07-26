@@ -125,6 +125,12 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
         updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
         UNIQUE(user_id, year)
       );
+
+      CREATE TABLE IF NOT EXISTS leave_request_google_events (
+        leave_request_id INTEGER PRIMARY KEY,
+        google_event_id VARCHAR(255) NOT NULL,
+        updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+      );
     `);
 
     await this.pool.query(`ALTER TABLE work_trips ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'PENDING'`);

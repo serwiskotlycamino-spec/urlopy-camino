@@ -2,6 +2,11 @@ import { IsEmail, IsInt, IsOptional, IsString, MaxLength, Min, MinLength } from 
 
 export class UpdateUserSettingsDto {
   @IsOptional()
+  @IsInt()
+  @Min(1)
+  id?: number;
+
+  @IsOptional()
   @IsString()
   @MinLength(2)
   @MaxLength(120)

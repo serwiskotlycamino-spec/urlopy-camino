@@ -89,6 +89,12 @@ public partial class MainWindow : Window
     {
         await RunBusyAsync(LoadAllTabsAsync, showErrors: false);
     }
+
+    private void SortLeaveRequestsNewestFirst()
+    {
+        _leaveRequests.Sort((left, right) => right.CreatedAtValue.CompareTo(left.CreatedAtValue));
+    }
+
     private void SetStatus(string message)
     {
         StatusTextBlock.Text = message;
@@ -144,6 +150,7 @@ public partial class MainWindow : Window
         var userMap = users.ToDictionary(u => u.Id, u => u.Name);
 
         MergeLeaveRequests(requests, userMap, _apiClient.LastLeaveRequestsSnapshotIsComplete);
+    SortLeaveRequestsNewestFirst();
 
         _users.Clear();
         _users.AddRange(users);
@@ -333,6 +340,7 @@ public partial class MainWindow : Window
         }
 
         _archiveStore.AddOrUpdateActiveRequest(request);
+        SortLeaveRequestsNewestFirst();
         
         RequestsGrid.Items.Refresh();
         SetStatus($"Wniosek #{request.Id} -> {(decision == "APPROVED" ? "Zaakceptowany" : "Odrzucony")}");
@@ -372,6 +380,7 @@ public partial class MainWindow : Window
             var users = await _apiClient.GetUsersAsync();
             var userMap = users.ToDictionary(u => u.Id, u => u.Name);
             MergeLeaveRequests(requests, userMap, _apiClient.LastLeaveRequestsSnapshotIsComplete);
+            SortLeaveRequestsNewestFirst();
             RequestsGrid.ItemsSource = _leaveRequests;
             SetStatus("Odświeżono listę wniosków.");
         });
@@ -387,6 +396,7 @@ public partial class MainWindow : Window
             var requests = await _apiClient.GetAllLeaveRequestsAsync();
             var userMap = users.ToDictionary(u => u.Id, u => u.Name);
             MergeLeaveRequests(requests, userMap, _apiClient.LastLeaveRequestsSnapshotIsComplete);
+            SortLeaveRequestsNewestFirst();
             RequestsGrid.ItemsSource = _leaveRequests;
             SetStatus("Dodano nowy wniosek.");
         }
@@ -451,6 +461,7 @@ public partial class MainWindow : Window
             {
                 _leaveRequests.Add(request);
             }
+            SortLeaveRequestsNewestFirst();
             _archiveStore.AddOrUpdateActiveRequest(request);
             RequestsGrid.ItemsSource = _leaveRequests;
             RequestsGrid.Items.Refresh();
@@ -518,6 +529,7 @@ public partial class MainWindow : Window
             _archiveStore.AddToTrash(selected, "ACTIVE");
             _archiveStore.RemoveActiveRequest(selected.Id);
             _leaveRequests.RemoveAll(x => x.Id == selected.Id);
+            SortLeaveRequestsNewestFirst();
             RequestsGrid.Items.Refresh();
             _archiveStore.AddUserActivity(selected.UserId, "Usunięcie zgłoszenia", $"Usunięto wniosek #{selected.Id}.");
             await LoadAllTabsAsync();
@@ -618,6 +630,7 @@ public partial class MainWindow : Window
             _archiveStore = new LeaveArchiveStore(AppDataPaths.StorageDirectory);
             _leaveRequests.Clear();
             _leaveRequests.AddRange(_archiveStore.LoadActiveRequests());
+            SortLeaveRequestsNewestFirst();
             _archivedLeaveRequests.Clear();
             _archivedLeaveRequests.AddRange(_archiveStore.Load());
             RequestsGrid.ItemsSource = _leaveRequests;

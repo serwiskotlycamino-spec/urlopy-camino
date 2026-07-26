@@ -11,8 +11,8 @@
         "image": "ubuntu-24.04-jdk-17-ndk-r27b"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL_CLOUD": "https://urlopy-api-svvhqvitka-lm.a.run.app",
-        "EXPO_PUBLIC_API_URL": "https://urlopy-api-svvhqvitka-lm.a.run.app"
+        "EXPO_PUBLIC_API_URL_CLOUD": "https://urlopy-api-622924376884.europe-central2.run.app",
+        "EXPO_PUBLIC_API_URL": "https://urlopy-api-622924376884.europe-central2.run.app"
       }
     },
     "production": {
@@ -21,8 +21,8 @@
         "buildType": "app-bundle"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL_CLOUD": "https://urlopy-api-svvhqvitka-lm.a.run.app",
-        "EXPO_PUBLIC_API_URL": "https://urlopy-api-svvhqvitka-lm.a.run.app"
+        "EXPO_PUBLIC_API_URL_CLOUD": "https://urlopy-api-622924376884.europe-central2.run.app",
+        "EXPO_PUBLIC_API_URL": "https://urlopy-api-622924376884.europe-central2.run.app"
       }
     }
   }

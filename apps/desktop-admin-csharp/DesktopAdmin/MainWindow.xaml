@@ -4,14 +4,13 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
-        Title="System Urlopowy Camino - Panel Administratora"
+        Title="System Urlopowy Camino 1.1.2 - Panel Administratora"
         Height="860"
         Width="1320"
         MinHeight="720"
         MinWidth="1100">
     <Grid Margin="14">
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
@@ -23,6 +22,9 @@
             <ColumnDefinition Width="*" />
             <ColumnDefinition Width="Auto" />
             <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
 
             <TextBlock Grid.Column="0"
@@ -32,40 +34,47 @@
                    VerticalAlignment="Center" />
 
             <Button Grid.Column="1"
+                x:Name="CalendarButton"
+                Content="Kalendarz"
+                Style="{StaticResource InfoButtonStyle}"
+                Width="120"
+                Margin="0,0,8,0"
+                Click="CalendarButton_Click" />
+
+            <Button Grid.Column="2"
+                x:Name="MontageButton"
+                Content="Montaże"
+                Style="{StaticResource PrimaryButtonStyle}"
+                Width="120"
+                Margin="0,0,8,0"
+                Click="MontageButton_Click" />
+
+            <Button Grid.Column="3"
+                x:Name="OptionsButton"
+                Content="Opcje"
+                Style="{StaticResource InfoButtonStyle}"
+                Width="110"
+                Margin="0,0,8,0"
+                Click="OptionsButton_Click" />
+
+            <Button Grid.Column="4"
                 x:Name="LogoutButton"
                 Content="Wyloguj"
+                Style="{StaticResource NeutralButtonStyle}"
                 Width="110"
                 Margin="0,0,8,0"
                 Click="LogoutButton_Click" />
 
-            <Button Grid.Column="2"
+            <Button Grid.Column="5"
                 x:Name="CloseButton"
                 Content="Zamknij"
+                Style="{StaticResource DangerButtonStyle}"
                 Width="100"
                 Click="CloseButton_Click" />
         </Grid>
 
-        <Border Grid.Row="1"
-                BorderBrush="#D0D0D0"
-                BorderThickness="1"
-                CornerRadius="6"
-                Padding="10"
-                Margin="0,0,0,10">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="220" />
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="130" />
-                </Grid.ColumnDefinitions>
-
-                <TextBlock Grid.Column="0" VerticalAlignment="Center" Text="API URL" FontWeight="SemiBold" />
-                <TextBox Grid.Column="1" x:Name="ApiUrlTextBox" Margin="10,0,10,0" />
-                <Button Grid.Column="2" x:Name="ApplyApiButton" Content="Ustaw API" Click="ApplyApiButton_Click" />
-            </Grid>
-        </Border>
-
         <Border x:Name="LoginPanel"
-            Grid.Row="2"
+            Grid.Row="1"
                 BorderBrush="#D0D0D0"
                 BorderThickness="1"
                 CornerRadius="6"
@@ -87,12 +96,12 @@
                 <TextBlock Grid.Column="2" VerticalAlignment="Center" Text="Hasło" FontWeight="SemiBold" />
                 <PasswordBox Grid.Column="3" x:Name="PasswordBox" Margin="8,0,10,0" />
 
-                <Button Grid.Column="4" x:Name="LoginButton" Content="Zaloguj" Click="LoginButton_Click" />
+                <Button Grid.Column="4" x:Name="LoginButton" Content="Zaloguj" Style="{StaticResource PrimaryButtonStyle}" Click="LoginButton_Click" />
                 <TextBlock Grid.Column="5" x:Name="CurrentUserTextBlock" VerticalAlignment="Center" Margin="12,0,0,0" Foreground="#444" />
             </Grid>
         </Border>
 
-        <TabControl Grid.Row="3" x:Name="MainTabs" IsEnabled="False">
+        <TabControl Grid.Row="2" x:Name="MainTabs" IsEnabled="False">
             <TabItem Header="Wszystkie wnioski">
                 <Grid Margin="10">
                     <Grid.RowDefinitions>
@@ -108,10 +117,12 @@
                               SelectionMode="Single"
                               IsReadOnly="True"
                               Margin="0,0,0,10"
-                              SelectionChanged="PendingGrid_SelectionChanged">
+                              SelectionChanged="PendingGrid_SelectionChanged"
+                              MouseDoubleClick="RequestsGrid_MouseDoubleClick">
                         <DataGrid.Columns>
                             <DataGridTextColumn Header="ID" Binding="{Binding Id}" Width="65" />
                             <DataGridTextColumn Header="Pracownik" Binding="{Binding UserName}" Width="150" />
+                            <DataGridTextColumn Header="Złożono" Binding="{Binding CreatedAtDisplay}" SortMemberPath="CreatedAtValue" Width="145" />
                             <DataGridTextColumn Header="Typ" Binding="{Binding LeaveTypePl}" Width="120" />
                             <DataGridTextColumn Header="Od" Binding="{Binding StartDateOnly}" Width="110" />
                             <DataGridTextColumn Header="Do" Binding="{Binding EndDateOnly}" Width="110" />
@@ -127,11 +138,44 @@
                     </StackPanel>
 
                     <StackPanel Grid.Row="2" Orientation="Horizontal">
-                        <Button x:Name="RefreshPendingButton" Content="Odśwież" Width="110" Click="RefreshPendingButton_Click" />
-                        <Button x:Name="ApproveButton" Content="Akceptuj" Width="110" Margin="10,0,0,0" Click="ApproveButton_Click" />
-                        <Button x:Name="RejectButton" Content="Odrzuć" Width="110" Margin="10,0,0,0" Click="RejectButton_Click" />
-                        <Button x:Name="SaveCommentButton" Content="Zapisz komentarz" Width="130" Margin="10,0,0,0" Click="SaveCommentButton_Click" />
-                        <Button x:Name="DeleteLeaveButton" Content="Usuń" Width="110" Margin="10,0,0,0" Click="DeleteLeaveButton_Click" />
+                        <Button x:Name="RefreshPendingButton" Content="Odśwież" Width="110" Style="{StaticResource InfoButtonStyle}" Click="RefreshPendingButton_Click" />
+                        <Button x:Name="AddLeaveButton" Content="Dodaj wniosek" Width="140" Margin="10,0,0,0" Style="{StaticResource PrimaryButtonStyle}" Click="AddLeaveButton_Click" />
+                        <Button x:Name="ApproveButton" Content="Akceptuj" Width="110" Margin="10,0,0,0" Style="{StaticResource PrimaryButtonStyle}" Click="ApproveButton_Click" />
+                        <Button x:Name="RejectButton" Content="Odrzuć" Width="110" Margin="10,0,0,0" Style="{StaticResource DangerButtonStyle}" Click="RejectButton_Click" />
+                        <Button x:Name="SaveCommentButton" Content="Zapisz komentarz" Width="130" Margin="10,0,0,0" Style="{StaticResource InfoButtonStyle}" Click="SaveCommentButton_Click" />
+                        <Button x:Name="DeleteLeaveButton" Content="Usuń" Width="110" Margin="10,0,0,0" Style="{StaticResource DangerButtonStyle}" Click="DeleteLeaveButton_Click" />
+                        <Button x:Name="ArchiveLeaveButton" Content="Przenieś do archiwum" Width="160" Margin="10,0,0,0" Style="{StaticResource NeutralButtonStyle}" Click="ArchiveLeaveButton_Click" />
+                    </StackPanel>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="Archiwum">
+                <Grid Margin="10">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <DataGrid x:Name="ArchiveGrid"
+                              Grid.Row="0"
+                              AutoGenerateColumns="False"
+                              CanUserAddRows="False"
+                              SelectionMode="Single"
+                              IsReadOnly="True"
+                              Margin="0,0,0,10">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="ID" Binding="{Binding Id}" Width="65" />
+                            <DataGridTextColumn Header="Pracownik" Binding="{Binding UserName}" Width="150" />
+                            <DataGridTextColumn Header="Złożono" Binding="{Binding CreatedAtDisplay}" SortMemberPath="CreatedAtValue" Width="145" />
+                            <DataGridTextColumn Header="Typ" Binding="{Binding LeaveTypePl}" Width="120" />
+                            <DataGridTextColumn Header="Od" Binding="{Binding StartDateOnly}" Width="110" />
+                            <DataGridTextColumn Header="Do" Binding="{Binding EndDateOnly}" Width="110" />
+                            <DataGridTextColumn Header="Status" Binding="{Binding StatusPl}" Width="110" />
+                            <DataGridTextColumn Header="Komentarz szefa" Binding="{Binding ManagerComment}" Width="*" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                    <StackPanel Grid.Row="1" Orientation="Horizontal">
+                        <Button x:Name="RestoreFromArchiveButton" Content="Przywróć do listy" Width="170" Style="{StaticResource PrimaryButtonStyle}" Click="RestoreFromArchiveButton_Click" />
+                        <Button x:Name="DeleteFromArchiveButton" Content="Usuń z archiwum" Width="170" Margin="10,0,0,0" Style="{StaticResource DangerButtonStyle}" Click="DeleteFromArchiveButton_Click" />
                     </StackPanel>
                 </Grid>
             </TabItem>
@@ -158,7 +202,7 @@
                             <DataGridTextColumn Header="ID" Binding="{Binding Id}" Width="65" />
                             <DataGridTextColumn Header="Imię" Binding="{Binding Name}" Width="220" />
                             <DataGridTextColumn Header="Email" Binding="{Binding Email}" Width="280" />
-                            <DataGridTextColumn Header="Rola" Binding="{Binding Role}" Width="120" />
+                            <DataGridTextColumn Header="Rola" Binding="{Binding RolePl}" Width="120" />
                         </DataGrid.Columns>
                     </DataGrid>
 
@@ -189,77 +233,12 @@
                         </Grid>
                     </Border>
                     <StackPanel Grid.Row="2" Orientation="Horizontal">
-                        <Button x:Name="RefreshUsersButton" Content="Odśwież" Width="110" Click="RefreshUsersButton_Click" />
-                        <Button x:Name="CreateUserButton" Content="Dodaj użytkownika" Width="150" Margin="10,0,0,0" Click="CreateUserButton_Click" />
-                        <Button x:Name="DeleteUserButton" Content="Usuń użytkownika" Width="150" Margin="10,0,0,0" Click="DeleteUserButton_Click" />
+                        <Button x:Name="RefreshUsersButton" Content="Odśwież" Width="110" Style="{StaticResource InfoButtonStyle}" Click="RefreshUsersButton_Click" />
+                        <Button x:Name="CreateUserButton" Content="Dodaj użytkownika" Width="150" Margin="10,0,0,0" Style="{StaticResource PrimaryButtonStyle}" Click="CreateUserButton_Click" />
+                        <Button x:Name="DeleteUserButton" Content="Usuń użytkownika" Width="150" Margin="10,0,0,0" Style="{StaticResource DangerButtonStyle}" Click="DeleteUserButton_Click" />
                         <TextBlock Text="Zmień rolę dla zaznaczonego:" VerticalAlignment="Center" Margin="20,0,8,0" />
                         <ComboBox x:Name="UpdateRoleCombo" Width="120" />
-                        <Button x:Name="UpdateRoleButton" Content="Zmień rolę" Width="120" Margin="8,0,0,0" Click="UpdateRoleButton_Click" />
-                    </StackPanel>
-                </Grid>
-            </TabItem>
-
-            <TabItem Header="Ustawienia mail">
-                <Grid Margin="10">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                    </Grid.RowDefinitions>
-
-                    <Grid Grid.Row="0" Margin="0,0,0,10">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="120" />
-                            <ColumnDefinition Width="280" />
-                            <ColumnDefinition Width="120" />
-                            <ColumnDefinition Width="180" />
-                            <ColumnDefinition Width="120" />
-                            <ColumnDefinition Width="280" />
-                        </Grid.ColumnDefinitions>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                        </Grid.RowDefinitions>
-
-                        <TextBlock Grid.Row="0" Grid.Column="0" Text="SMTP host" VerticalAlignment="Center" />
-                        <TextBox Grid.Row="0" Grid.Column="1" x:Name="SmtpHostTextBox" Margin="8,0,20,8" />
-                        <TextBlock Grid.Row="0" Grid.Column="2" Text="SMTP port" VerticalAlignment="Center" />
-                        <TextBox Grid.Row="0" Grid.Column="3" x:Name="SmtpPortTextBox" Margin="8,0,20,8" />
-                        <TextBlock Grid.Row="0" Grid.Column="4" Text="SMTP user" VerticalAlignment="Center" />
-                        <TextBox Grid.Row="0" Grid.Column="5" x:Name="SmtpUserTextBox" Margin="8,0,0,8" />
-
-                        <TextBlock Grid.Row="1" Grid.Column="0" Text="SMTP from" VerticalAlignment="Center" />
-                        <TextBox Grid.Row="1" Grid.Column="1" x:Name="SmtpFromTextBox" Margin="8,0,20,8" />
-                        <TextBlock Grid.Row="1" Grid.Column="2" Text="IMAP host" VerticalAlignment="Center" />
-                        <TextBox Grid.Row="1" Grid.Column="3" x:Name="ImapHostTextBox" Margin="8,0,20,8" />
-                        <TextBlock Grid.Row="1" Grid.Column="4" Text="IMAP port" VerticalAlignment="Center" />
-                        <TextBox Grid.Row="1" Grid.Column="5" x:Name="ImapPortTextBox" Margin="8,0,0,8" />
-
-                        <TextBlock Grid.Row="2" Grid.Column="0" Text="IMAP user" VerticalAlignment="Center" />
-                        <TextBox Grid.Row="2" Grid.Column="1" x:Name="ImapUserTextBox" Margin="8,0,20,0" />
-                        <TextBlock Grid.Row="2" Grid.Column="2" Text="Tryb" VerticalAlignment="Center" />
-                        <ComboBox Grid.Row="2" Grid.Column="3" x:Name="CommunicationModeCombo" Margin="8,0,20,0" />
-                        <CheckBox Grid.Row="2" Grid.Column="4" Grid.ColumnSpan="2" x:Name="ImapSecureCheck" Content="IMAP secure" VerticalAlignment="Center" />
-                    </Grid>
-
-                    <Grid Grid.Row="1" Margin="0,0,0,10">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="120" />
-                            <ColumnDefinition Width="280" />
-                            <ColumnDefinition Width="120" />
-                            <ColumnDefinition Width="280" />
-                        </Grid.ColumnDefinitions>
-
-                        <TextBlock Grid.Column="0" Text="Hasło SMTP" VerticalAlignment="Center" />
-                        <PasswordBox Grid.Column="1" x:Name="SmtpPassBox" Margin="8,0,20,0" />
-                        <TextBlock Grid.Column="2" Text="Hasło IMAP" VerticalAlignment="Center" />
-                        <PasswordBox Grid.Column="3" x:Name="ImapPassBox" Margin="8,0,0,0" />
-                    </Grid>
-
-                    <StackPanel Grid.Row="2" Orientation="Horizontal">
-                        <Button x:Name="RefreshMailButton" Content="Odśwież" Width="110" Click="RefreshMailButton_Click" />
-                        <Button x:Name="SaveMailButton" Content="Zapisz ustawienia" Width="150" Margin="10,0,0,0" Click="SaveMailButton_Click" />
+                        <Button x:Name="UpdateRoleButton" Content="Zmień rolę" Width="120" Margin="8,0,0,0" Style="{StaticResource InfoButtonStyle}" Click="UpdateRoleButton_Click" />
                     </StackPanel>
                 </Grid>
             </TabItem>
@@ -269,6 +248,9 @@
                     <Grid.RowDefinitions>
                         <RowDefinition Height="*" />
                         <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
                     <DataGrid x:Name="WorkTripsGrid"
@@ -277,11 +259,12 @@
                               CanUserAddRows="False"
                               SelectionMode="Single"
                               IsReadOnly="True"
+                              MouseDoubleClick="WorkTripsGrid_MouseDoubleClick"
                               Margin="0,0,0,10">
                         <DataGrid.Columns>
                             <DataGridTextColumn Header="ID" Binding="{Binding Id}" Width="65" />
                             <DataGridTextColumn Header="Pracownik" Binding="{Binding UserName}" Width="150" />
-                            <DataGridTextColumn Header="Data" Binding="{Binding TripDate}" Width="110" />
+                            <DataGridTextColumn Header="Data" Binding="{Binding TripDatePl}" Width="110" />
                             <DataGridTextColumn Header="Od" Binding="{Binding StartTime}" Width="110" />
                             <DataGridTextColumn Header="Do" Binding="{Binding EndTime}" Width="110" />
                             <DataGridTextColumn Header="Cel" Binding="{Binding Destination}" Width="200" />
@@ -334,22 +317,171 @@
                     </Border>
                     
                      <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,0,0,8">
-                        <TextBlock Text="Komentarz:" VerticalAlignment="Center" FontWeight="SemiBold" />
-                        <TextBox x:Name="WorkTripCommentTextBox" Width="500" Margin="12,0,0,0" />
+                        <TextBlock Text="Podwójny klik w wiersz otwiera pełną edycję wyjazdu." VerticalAlignment="Center" FontWeight="SemiBold" />
                     </StackPanel>
 
                     <StackPanel Grid.Row="4" Orientation="Horizontal">
-                        <Button x:Name="RefreshWorkTripsButton" Content="Odśwież" Width="110" Click="RefreshWorkTripsButton_Click" />
-                        <Button x:Name="AddWorkTripButton" Content="Dodaj wyjazd" Width="120" Margin="10,0,0,0" Click="AddWorkTripButton_Click" />
-                        <Button x:Name="UpdateWorkTripButton" Content="Zapisz zmiany" Width="120" Margin="10,0,0,0" Click="UpdateWorkTripButton_Click" />
-                        <Button x:Name="ApproveWorkTripButton" Content="Akceptuj" Width="110" Margin="10,0,0,0" Click="ApproveWorkTripButton_Click" />
-                        <Button x:Name="RejectWorkTripButton" Content="Odrzuć" Width="110" Margin="10,0,0,0" Click="RejectWorkTripButton_Click" />
-                        <Button x:Name="DeleteWorkTripButton" Content="Usuń wyjazd" Width="120" Margin="10,0,0,0" Click="DeleteWorkTripButton_Click" />
+                        <Button x:Name="RefreshWorkTripsButton" Content="Odśwież" Width="110" Style="{StaticResource InfoButtonStyle}" Click="RefreshWorkTripsButton_Click" />
+                        <Button x:Name="AddWorkTripButton" Content="Dodaj wyjazd" Width="120" Margin="10,0,0,0" Style="{StaticResource PrimaryButtonStyle}" Click="AddWorkTripButton_Click" />
+                        <Button x:Name="UpdateWorkTripButton" Content="Zapisz zmiany" Width="120" Margin="10,0,0,0" Style="{StaticResource InfoButtonStyle}" Click="UpdateWorkTripButton_Click" />
+                        <Button x:Name="ReviewWorkTripButton" Content="Akceptuj/Odrzuć" Width="150" Margin="10,0,0,0" Style="{StaticResource PrimaryButtonStyle}" Click="ReviewWorkTripButton_Click" />
+                        <Button x:Name="DeleteWorkTripButton" Content="Usuń wyjazd" Width="120" Margin="10,0,0,0" Style="{StaticResource DangerButtonStyle}" Click="DeleteWorkTripButton_Click" />
                     </StackPanel>
                 </Grid>
             </TabItem>
+
+            <TabItem Header="Historia i podliczenia">
+                <Grid Margin="10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="2*" />
+                    </Grid.ColumnDefinitions>
+
+                    <Border Grid.Column="0" BorderBrush="#D0D0D0" BorderThickness="1" CornerRadius="6" Padding="8" Margin="0,0,10,0">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+                            <TextBlock Text="Użytkownicy" FontWeight="SemiBold" Margin="0,0,0,8" />
+                            <ListBox Grid.Row="1"
+                                     x:Name="HistoryUsersList"
+                                     DisplayMemberPath="Name"
+                                     SelectionChanged="HistoryUsersList_SelectionChanged" />
+                        </Grid>
+                    </Border>
+
+                    <Border Grid.Column="1" BorderBrush="#D0D0D0" BorderThickness="1" CornerRadius="6" Padding="10">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <TextBlock Grid.Row="0" x:Name="HistoryUserHeaderText" Text="Wybierz użytkownika z listy." FontSize="18" FontWeight="Bold" Margin="0,0,0,10" />
+
+                            <Grid Grid.Row="1" Margin="0,0,0,10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="150" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="120" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+
+                                <TextBlock Grid.Row="0" Grid.Column="0" Text="Imię i nazwisko" VerticalAlignment="Center" />
+                                <TextBox Grid.Row="0" Grid.Column="1" x:Name="HistoryNameTextBox" Margin="8,0,16,8" IsReadOnly="True" />
+                                <TextBlock Grid.Row="0" Grid.Column="2" Text="Email" VerticalAlignment="Center" />
+                                <TextBox Grid.Row="0" Grid.Column="3" x:Name="HistoryEmailTextBox" Margin="8,0,0,8" IsReadOnly="True" />
+
+                                <TextBlock Grid.Row="1" Grid.Column="0" Text="Rola" VerticalAlignment="Center" />
+                                <TextBox Grid.Row="1" Grid.Column="1" x:Name="HistoryRoleTextBox" Margin="8,0,16,8" IsReadOnly="True" />
+                                <TextBlock Grid.Row="1" Grid.Column="2" Text="Telefon" VerticalAlignment="Center" />
+                                <TextBox Grid.Row="1" Grid.Column="3" x:Name="HistoryPhoneTextBox" Margin="8,0,0,8" />
+
+                                <TextBlock Grid.Row="2" Grid.Column="0" Text="Adres" VerticalAlignment="Center" />
+                                <TextBox Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="3" x:Name="HistoryAddressTextBox" Margin="8,0,0,8" />
+
+                                <TextBlock Grid.Row="3" Grid.Column="0" Text="Dodatkowe dane" VerticalAlignment="Center" />
+                                <TextBox Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="3" x:Name="HistoryNotesTextBox" Margin="8,0,0,0" />
+                            </Grid>
+
+                            <Border Grid.Row="2" BorderBrush="#D0D0D0" BorderThickness="1" CornerRadius="6" Padding="8" Margin="0,0,0,10">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+
+                                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Ilość zgłoszeń" FontWeight="SemiBold" />
+                                    <TextBox Grid.Row="0" Grid.Column="1" x:Name="StatsTotalRequestsText" IsReadOnly="True" Margin="6,0,0,4" />
+
+                                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Aktualnie przetwarzane" FontWeight="SemiBold" />
+                                    <TextBox Grid.Row="1" Grid.Column="1" x:Name="StatsPendingRequestsText" IsReadOnly="True" Margin="6,0,0,4" />
+
+                                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Zgłoszenia zatwierdzone" FontWeight="SemiBold" />
+                                    <TextBox Grid.Row="2" Grid.Column="1" x:Name="StatsApprovedRequestsText" IsReadOnly="True" Margin="6,0,0,4" />
+
+                                    <TextBlock Grid.Row="3" Grid.Column="0" Text="Zgłoszenia odrzucone" FontWeight="SemiBold" />
+                                    <TextBox Grid.Row="3" Grid.Column="1" x:Name="StatsRejectedRequestsText" IsReadOnly="True" Margin="6,0,0,4" />
+
+                                    <TextBlock Grid.Row="4" Grid.Column="0" Text="Zgłoszenia anulowane" FontWeight="SemiBold" />
+                                    <TextBox Grid.Row="4" Grid.Column="1" x:Name="StatsCancelledRequestsText" IsReadOnly="True" Margin="6,0,0,4" />
+
+                                    <TextBlock Grid.Row="5" Grid.Column="0" Text="Wykorzystany urlop roczny" FontWeight="SemiBold" />
+                                    <TextBox Grid.Row="5" Grid.Column="1" x:Name="StatsAnnualUsedText" IsReadOnly="True" Margin="6,0,0,4" />
+
+                                    <TextBlock Grid.Row="6" Grid.Column="0" Text="Wykorzystane na żądanie" FontWeight="SemiBold" />
+                                    <TextBox Grid.Row="6" Grid.Column="1" x:Name="StatsOnDemandUsedText" IsReadOnly="True" Margin="6,0,0,4" />
+
+                                    <TextBlock Grid.Row="7" Grid.Column="0" Text="Pozostały urlop" FontWeight="SemiBold" />
+                                    <TextBox Grid.Row="7" Grid.Column="1" x:Name="StatsRemainingLeaveText" IsReadOnly="True" Margin="6,0,0,4" />
+
+                                    <TextBlock Grid.Row="8" Grid.Column="0" Text="Wykorzystane chorobowe" FontWeight="SemiBold" />
+                                    <TextBox Grid.Row="8" Grid.Column="1" x:Name="StatsSickUsedText" IsReadOnly="True" Margin="6,0,0,4" />
+
+                                    <TextBlock Grid.Row="9" Grid.Column="0" Text="Wyjazdy służbowe (łącznie)" FontWeight="SemiBold" />
+                                    <TextBox Grid.Row="9" Grid.Column="1" x:Name="StatsTripsTotalText" IsReadOnly="True" Margin="6,0,0,4" />
+
+                                    <TextBlock Grid.Row="10" Grid.Column="0" Text="Wyjazdy służbowe (przetwarzane)" FontWeight="SemiBold" />
+                                    <TextBox Grid.Row="10" Grid.Column="1" x:Name="StatsTripsPendingText" IsReadOnly="True" Margin="6,0,0,0" />
+                                </Grid>
+                            </Border>
+
+                            <DataGrid Grid.Row="3"
+                                      x:Name="HistoryRecentGrid"
+                                      AutoGenerateColumns="False"
+                                      CanUserAddRows="False"
+                                      IsReadOnly="True"
+                                      MouseDoubleClick="HistoryRecentGrid_MouseDoubleClick"
+                                      Margin="0,0,0,10">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="ID" Binding="{Binding Id}" Width="70" />
+                                    <DataGridTextColumn Header="Typ" Binding="{Binding LeaveTypePl}" Width="140" />
+                                    <DataGridTextColumn Header="Od" Binding="{Binding StartDateOnly}" Width="120" />
+                                    <DataGridTextColumn Header="Do" Binding="{Binding EndDateOnly}" Width="120" />
+                                    <DataGridTextColumn Header="Status" Binding="{Binding StatusPl}" Width="120" />
+                                    <DataGridTextColumn Header="Komentarz" Binding="{Binding ManagerComment}" Width="*" />
+                                </DataGrid.Columns>
+                            </DataGrid>
+
+                            <StackPanel Grid.Row="4" Orientation="Horizontal">
+                                <TextBlock Text="Roczny limit urlopu" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                <TextBox x:Name="AnnualLimitTextBox" Width="90" Margin="0,0,8,0" />
+                                <Button x:Name="SaveAnnualLimitButton" Content="Zapisz limit" Width="120" Style="{StaticResource InfoButtonStyle}" Click="SaveAnnualLimitButton_Click" />
+                                <Button x:Name="EditHistoryUserButton" Content="Edytuj" Width="120" Style="{StaticResource PrimaryButtonStyle}" Click="EditHistoryUserButton_Click" />
+                                <Button x:Name="UserHistoryButton" Content="Historia" Width="120" Style="{StaticResource InfoButtonStyle}" Click="UserHistoryButton_Click" />
+                                <Button x:Name="ExportUserPdfButton" Content="Eksportuj PDF" Width="140" Style="{StaticResource InfoButtonStyle}" Click="ExportUserPdfButton_Click" />
+                            </StackPanel>
+                        </Grid>
+                        </ScrollViewer>
+                    </Border>
+                </Grid>
+            </TabItem>
         </TabControl>
-        <StatusBar Grid.Row="4" Margin="0,10,0,0">
+        <StatusBar Grid.Row="3" Margin="0,10,0,0">
             <StatusBarItem>
                 <TextBlock x:Name="StatusTextBlock" Text="Gotowy." />
             </StatusBarItem>

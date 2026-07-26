@@ -1,0 +1,47 @@
+<Window x:Class="DesktopAdmin.WorkTripEditWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Edycja wyjazdu służbowego"
+        Height="420"
+        Width="620"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize">
+    <Grid Margin="14">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="150" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <TextBlock Grid.Row="0" Grid.Column="0" Text="Pracownik" VerticalAlignment="Center" />
+        <TextBox Grid.Row="0" Grid.Column="1" x:Name="UserTextBox" IsReadOnly="True" Margin="8,0,0,8" />
+
+        <TextBlock Grid.Row="1" Grid.Column="0" Text="Data" VerticalAlignment="Center" />
+        <TextBox Grid.Row="1" Grid.Column="1" x:Name="DateTextBox" IsReadOnly="True" Margin="8,0,0,8" />
+
+        <TextBlock Grid.Row="2" Grid.Column="0" Text="Godzina od" VerticalAlignment="Center" />
+        <TextBox Grid.Row="2" Grid.Column="1" x:Name="StartTimeTextBox" Margin="8,0,0,8" />
+
+        <TextBlock Grid.Row="3" Grid.Column="0" Text="Godzina do" VerticalAlignment="Center" />
+        <TextBox Grid.Row="3" Grid.Column="1" x:Name="EndTimeTextBox" Margin="8,0,0,8" />
+
+        <TextBlock Grid.Row="4" Grid.Column="0" Text="Cel" VerticalAlignment="Center" />
+        <TextBox Grid.Row="4" Grid.Column="1" x:Name="DestinationTextBox" Margin="8,0,0,8" />
+
+        <TextBlock Grid.Row="5" Grid.Column="0" Text="Opis" VerticalAlignment="Top" />
+        <TextBox Grid.Row="5" Grid.Column="1" x:Name="DescriptionTextBox" Margin="8,0,0,8" Height="110" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" />
+
+        <StackPanel Grid.Row="6" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button Content="Anuluj" Width="110" Style="{StaticResource NeutralButtonStyle}" Click="CancelButton_Click" />
+            <Button Content="Zapisz" Width="110" Style="{StaticResource PrimaryButtonStyle}" Click="SaveButton_Click" />
+        </StackPanel>
+    </Grid>
+</Window>

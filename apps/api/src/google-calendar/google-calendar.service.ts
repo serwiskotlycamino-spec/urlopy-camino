@@ -18,8 +18,8 @@ type LeaveCalendarPayload = {
   userName: string;
   userEmail: string;
   leaveType: string;
-  startDate: string;
-  endDate: string;
+  startDate: string | Date;
+  endDate: string | Date;
   reason: string | null;
   managerComment: string | null;
 };
@@ -110,12 +110,14 @@ export class GoogleCalendarService {
   private buildEventBody(payload: LeaveCalendarPayload): Record<string, unknown> {
     const leaveTypeLabel = this.getLeaveTypeLabel(payload.leaveType);
     const summary = `${this.titlePrefix}: ${payload.userName}`;
+    const startDate = this.normalizeCalendarDate(payload.startDate);
+    const endDate = this.normalizeCalendarDate(payload.endDate);
 
     const descriptionLines = [
       `Pracownik: ${payload.userName}`,
       `Email: ${payload.userEmail}`,
       `Typ: ${leaveTypeLabel}`,
-      `Zakres: ${payload.startDate} - ${payload.endDate}`,
+      `Zakres: ${startDate} - ${endDate}`,
       `Powod: ${payload.reason ?? '-'}`,
       `Komentarz przelozonego: ${payload.managerComment ?? '-'}`,
       `Wniosek ID: ${payload.leaveRequestId}`,
@@ -126,10 +128,10 @@ export class GoogleCalendarService {
       description: descriptionLines.join('\n'),
       colorId: this.getColorId(payload.leaveType),
       start: {
-        date: payload.startDate,
+        date: startDate,
       },
       end: {
-        date: this.getExclusiveEndDate(payload.endDate),
+        date: this.getExclusiveEndDate(endDate),
       },
       transparency: 'opaque',
       extendedProperties: {
@@ -139,6 +141,24 @@ export class GoogleCalendarService {
         },
       },
     };
+  }
+
+  private normalizeCalendarDate(value: string | Date): string {
+    if (value instanceof Date) {
+      return value.toISOString().slice(0, 10);
+    }
+
+    const trimmed = value.trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+      return trimmed;
+    }
+
+    const parsed = new Date(trimmed);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed.toISOString().slice(0, 10);
+    }
+
+    return trimmed;
   }
 
   private getExclusiveEndDate(endDate: string): string {
